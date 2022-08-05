@@ -1,5 +1,5 @@
-# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-# Copyright 2021 Camptocamp SA
+# Copyright 2022 Camptocamp SA
+# License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
 from collections import abc, defaultdict
 import contextlib
@@ -11,12 +11,20 @@ import click
 import git
 import requests
 
-from ..manifest import MANIFEST_NAMES
+MANIFEST_NAMES = ("__manifest__.py", "__openerp__.py")
 
 
 GITHUB_API_URL = "https://api.github.com"
 
 PO_FILE_REGEX = re.compile(r".*i18n/.+\.pot?$")
+
+
+# Copy-pasted from OCA/maintainer-tools
+def get_manifest_path(addon_dir):
+    for manifest_name in MANIFEST_NAMES:
+        manifest_path = os.path.join(addon_dir, manifest_name)
+        if os.path.isfile(manifest_path):
+            return manifest_path
 
 
 class bcolors:

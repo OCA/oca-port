@@ -1,5 +1,5 @@
-# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-# Copyright 2021 Camptocamp SA
+# Copyright 2022 Camptocamp SA
+# License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 """Tool helping to port an addon or missing commits of an addon from one branch
 to another.
 

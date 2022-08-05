@@ -1,5 +1,5 @@
-# Copyright 2021 Camptocamp SA
-# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+# Copyright 2022 Camptocamp SA
+# License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
 from collections import defaultdict
 import shutil
@@ -9,7 +9,6 @@ import os
 import click
 import git
 
-from ..manifest import get_manifest_path
 from . import misc
 from .misc import bcolors as bc
 
@@ -265,7 +264,7 @@ class PortAddonPullRequest():
             return False, ""
         diff_path = diff.b_path.split("/", maxsplit=1)[0]
         # Do not accept diff on unported addons
-        if not get_manifest_path(diff_path) and diff_path not in commit.addons_created:
+        if not misc.get_manifest_path(diff_path) and diff_path not in commit.addons_created:
             return (
                 True,
                 (
