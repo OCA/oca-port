@@ -103,7 +103,7 @@ class PortAddonPullRequest():
             if branches_diff.commits_diff else None
         )
         for pr, commits in branches_diff.commits_diff.items():
-            current_commit = self.repo.commit(self.to_branch.name)
+            current_commit = self.repo.commit(self.to_branch.ref())
             pr_branch, based_on_previous = self._port_pull_request_commits(
                 pr, commits, base_ref, previous_pr, previous_pr_branch,
             )
@@ -195,7 +195,7 @@ class PortAddonPullRequest():
                 base_ref = previous_pr_branch
                 based_on_previous = True
             print(
-                f"\tCreate branch {bc.BOLD}{branch_name}{bc.END} from {base_ref}..."
+                f"\tCreate branch {bc.BOLD}{branch_name}{bc.END} from {base_ref.ref()}..."
             )
             self.repo.git.checkout("--no-track", "-b", branch_name, base_ref.ref())
         else:
