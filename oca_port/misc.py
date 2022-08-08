@@ -43,13 +43,18 @@ class bcolors:
 
 
 class Branch():
-    def __init__(self, repo, name, remote=None):
+    def __init__(self, repo, name, default_remote=None, check_remote=True):
         self.repo = repo
+        if len(name.split("/", 1)) > 1:
+            remote, name = name.split("/", 1)
+        else:
+            remote = default_remote
         self.name = name
         self.remote = None
         if remote:
-            if repo.git.ls_remote("--heads", remote, name):
-                self.remote = remote
+            if check_remote and remote not in repo.remotes:
+                raise ValueError(repo, remote)
+            self.remote = remote
 
     def ref(self):
         ref = self.name

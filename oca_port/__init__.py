@@ -56,7 +56,7 @@ from .port_addon_pr import PortAddonPullRequest
 @click.option("--upstream-org", default="OCA", show_default=True,
               help="Upstream organization name.")
 @click.option("--upstream", default="origin", show_default=True, required=True,
-              help="Git remote from which source and target branches are fetched.")
+              help="Git remote from which source and target branches are fetched by default.")
 @click.option("--repo-name", help="Repository name, eg. server-tools.")
 @click.option("--fork",
               help="Git remote on which branches containing ported commits are pushed.")
@@ -84,22 +84,20 @@ def main(
     if not user_org:
         # Assume that the fork remote has the same name than the user organization
         user_org = fork
-    if fork and fork not in repo.remotes:
-        raise click.ClickException(
-            f"No remote {bc.FAIL}{fork}{bc.END} in the current repository.\n"
-            "To add it:\n"
-            f"\t{bc.DIM}$ git remote add {fork} "
-            f"git@github.com:{user_org}/{repo_name}.git{bc.END} "
-            "# This mode requires an SSH key in the GitHub account\n"
-            "Or:\n"
-            f"\t{bc.DIM}$ git remote add {fork} "
-            f"https://github.com/{user_org}/{repo_name}.git{bc.END} "
-            "# This will require to enter user/password each time\n"
-            "\nYou can change the GitHub organization with the "
-            f"{bc.DIM}--user-org{bc.END} option."
-        )
-    from_branch = misc.Branch(repo, from_branch, upstream)
-    to_branch = misc.Branch(repo, to_branch, upstream)
+    if fork:
+        error_msg = _check_remote(repo_name, repo, fork, raise_exc=False)
+        if error_msg:
+            error_msg += (
+                "\n\nYou can change the GitHub organization with the "
+                f"{bc.DIM}--user-org{bc.END} option."
+            )
+            raise click.ClickException(error_msg)
+    try:
+        # Parse source and target branches
+        from_branch = misc.Branch(repo, from_branch, default_remote=upstream)
+        to_branch = misc.Branch(repo, to_branch, default_remote=upstream)
+    except ValueError as exc:
+        _check_remote(repo_name, *exc.args)
     storage = misc.InputStorage(repo.working_dir)
     _fetch_branches(from_branch, to_branch, verbose=verbose)
     _check_branches(from_branch, to_branch)
@@ -117,6 +115,25 @@ def main(
             repo, upstream_org, repo_name, from_branch, to_branch,
             fork, user_org, addon, storage, verbose, non_interactive
         ).run()
+
+
+def _check_remote(repo_name, repo, remote, raise_exc=True):
+    """Check that `remote` exists in the local repository."""
+    if remote not in repo.remotes:
+        msg = (
+            f"No remote {bc.FAIL}{remote}{bc.END} in the current repository.\n"
+            "To add it:\n"
+            "\t# This mode requires an SSH key in the GitHub account\n"
+            f"\t{bc.DIM}$ git remote add {remote} "
+            f"git@github.com:{remote}/{repo_name}.git{bc.END}\n"
+            "   Or:\n"
+            "\t# This will require to enter user/password each time\n"
+            f"\t{bc.DIM}$ git remote add {remote} "
+            f"https://github.com/{remote}/{repo_name}.git{bc.END}"
+        )
+        if not raise_exc:
+            return msg
+        raise click.ClickException(msg)
 
 
 def _fetch_branches(*branches, verbose=False):
