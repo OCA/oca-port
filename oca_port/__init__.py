@@ -59,7 +59,7 @@ from .port_addon_pr import PortAddonPullRequest
               help="Git remote from which source and target branches are fetched by default.")
 @click.option("--repo-name", help="Repository name, eg. server-tools.")
 @click.option("--fork",
-              help="Git remote on which branches containing ported commits are pushed.")
+              help="Git remote where branches with ported commits are pushed.")
 @click.option("--user-org", show_default="--fork", help="User organization name.")
 @click.option("--verbose", is_flag=True,
               help="List the commits of Pull Requests.")
@@ -72,10 +72,17 @@ def main(
     """Migrate ADDON from FROM_BRANCH to TO_BRANCH or list Pull Requests to port
     if ADDON already exists on TO_BRANCH.
 
-    The PRs are found from source branch commits that do not exist in the target branch.
+    Migration:
 
-    If the option `--fork` is set, one branche per PR will be created with
-    missing commits and will be pushed to the indicated fork on GitHub.
+        Assist the user in the migration of the addon, following the OCA guidelines.
+
+    Port of Pull Requests (missing commits):
+
+        The PRs are found from FROM_BRANCH commits that do not exist in TO_BRANCH.
+The user will be asked if he wants to port them.
+
+    To start the migration process, the `--fork` option must be provided in
+order to push the resulting branch on the user's remote.
     """
     repo = git.Repo()
     if repo.is_dirty():
