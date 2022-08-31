@@ -108,13 +108,17 @@ class PortAddonPullRequest():
                 pr, commits, base_ref, previous_pr, previous_pr_branch,
             )
             if pr_branch:
-                # Check if commits have been ported
+                # Check if commits have been ported.
+                # If none has been ported, blacklist automatically the current PR.
                 if self.repo.commit(pr_branch.ref()) == current_commit:
                     print("\tℹ️  Nothing has been ported, skipping")
                     self.storage.blacklist_pr(
-                        self.from_branch.name, self.to_branch.name,
-                        self.addon, pr.number
+                        pr.number,
+                        confirm=True,
+                        reason=f"(auto) Nothing to port from PR #{pr.number}",
                     )
+                    if self.storage.dirty:
+                        self.storage.commit()
                     msg = (
                         f"\t{bc.DIM}PR #{pr.number} has been"
                         if pr.number else "Orphaned commits have been"
@@ -160,12 +164,11 @@ class PortAddonPullRequest():
             self.repo.git.checkout(
                 "--no-track", "-b", self.to_branch.name, self.to_branch.ref()
             )
+        # Ask the user if he wants to port the PR (or orphaned commits)
         if not click.confirm("\tPort it?" if pr.number else "\tPort them?"):
-            self.storage.blacklist_pr(
-                self.from_branch.name, self.to_branch.name,
-                self.addon, pr.number, confirm=True
-            )
-            return None, based_on_previous
+            self.storage.blacklist_pr(pr.number, confirm=True)
+            if not self.storage.dirty:
+                return None, based_on_previous
         # Create a local branch based on upstream
         if self.create_branch:
             branch_name = PR_BRANCH_NAME.format(
@@ -179,7 +182,7 @@ class PortAddonPullRequest():
                 # the previous PR branch
                 if previous_pr_branch:
                     based_on_previous = self.repo.is_ancestor(
-                        previous_pr_branch, branch_name
+                        previous_pr_branch.name, branch_name
                     )
                 confirm = (
                     f"\tBranch {bc.BOLD}{branch_name}{bc.END} already exists, "
@@ -200,6 +203,10 @@ class PortAddonPullRequest():
             self.repo.git.checkout("--no-track", "-b", branch_name, base_ref.ref())
         else:
             branch_name = self.to_branch.name
+        # If the PR has been blacklisted we need to commit this information
+        if self.storage.dirty:
+            self.storage.commit()
+            return misc.Branch(self.repo, branch_name), based_on_previous
 
         # Cherry-pick commits of the source PR
         for commit in commits:
@@ -593,13 +600,12 @@ class BranchesDiff():
         # Do not return blacklisted PR.
         sorted_commits_by_pr = {}
         for pr in sorted(commits_by_pr, key=lambda pr: pr.merged_at or ""):
-            if self.storage.is_pr_blacklisted(
-                    self.from_branch.name, self.to_branch.name, self.path, pr.number
-                    ):
+            blacklisted = self.storage.is_pr_blacklisted(pr.number)
+            if blacklisted:
                 msg = (
                     f"{bc.DIM}PR #{pr.number}"
                     if pr.number else "Orphaned commits"
-                ) + f" blacklisted{bc.ENDD}"
+                ) + f" blacklisted ({blacklisted}){bc.ENDD}"
                 print(msg)
                 continue
             sorted_commits_by_pr[pr] = commits_by_pr[pr]

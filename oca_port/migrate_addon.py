@@ -46,6 +46,17 @@ MIG_TIPS = "\n".join([
     "\t4) Create the PR against {upstream_org}/{repo_name}:",
     f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
 ])
+BLACKLIST_TIPS = "\n".join([
+    f"\n{bc.BOLD}{bc.OKCYAN}The next steps are:{bc.END}",
+    (
+        "\t1) On a shell command, type this for uploading the content to GitHub:\n"
+        f"{bc.DIM}"
+        "\t\t$ git push {fork} {mig_branch} --set-upstream"
+        f"{bc.END}"
+    ),
+    "\t2) Create the PR against {upstream_org}/{repo_name}:",
+    f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
+])
 
 
 class MigrateAddon():
@@ -69,12 +80,12 @@ class MigrateAddon():
         self.non_interactive = non_interactive
 
     def run(self):
-        if self.storage.is_addon_blacklisted(
-                self.from_branch.name, self.to_branch.name, self.addon
-                ):
+        blacklisted = self.storage.is_addon_blacklisted()
+        if blacklisted:
             print(
-                f"{bc.DIM}Migration to {self.to_branch.name} for "
-                f"{bc.BOLD}{self.addon}{bc.END} {bc.DIM}blacklisted{bc.ENDD}")
+                f"{bc.DIM}Migration of {bc.BOLD}{self.addon}{bc.END} "
+                f"{bc.DIM}to {self.to_branch.name} "
+                f"blacklisted ({blacklisted}){bc.ENDD}")
             return
         if self.non_interactive:
             # Exit with an error code if the addon is eligible for a migration
@@ -85,11 +96,9 @@ class MigrateAddon():
             f"to {bc.BOLD}{self.to_branch.name}{bc.END}?"
         )
         if not click.confirm(confirm):
-            self.storage.blacklist_addon(
-                self.from_branch.name, self.to_branch.name,
-                self.addon, confirm=True
-            )
-            return
+            self.storage.blacklist_addon(confirm=True)
+            if not self.storage.dirty:
+                return
         # Check if a migration PR already exists
         # TODO
         if not self.fork:
@@ -98,6 +107,11 @@ class MigrateAddon():
             raise click.ClickException("Untracked files detected, abort")
         self._checkout_base_branch()
         if self._create_mig_branch():
+            # Case where the addon shouldn't be ported (blacklisted)
+            if self.storage.dirty:
+                self.storage.commit()
+                self._print_tips(blacklisted=True)
+                return
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
@@ -178,7 +192,7 @@ class MigrateAddon():
                 "-m", f"[IMP] {self.addon}: black, isort, prettier", "--no-verify"
             )
 
-    def _print_tips(self):
+    def _print_tips(self, blacklisted=False):
         mig_tasks_url = MIG_TASKS_URL.format(branch=self.to_branch.name)
         pr_title_encoded = urllib.parse.quote(
             MIG_NEW_PR_TITLE.format(to_branch=self.to_branch.name[:4], addon=self.addon)
@@ -188,6 +202,14 @@ class MigrateAddon():
             to_branch=self.to_branch.name, user_org=self.user_org,
             mig_branch=self.mig_branch.name, title=pr_title_encoded
         )
+        if blacklisted:
+            tips = BLACKLIST_TIPS.format(
+                upstream_org=self.upstream_org, repo_name=self.repo_name,
+                fork=self.fork, mig_branch=self.mig_branch.name,
+                new_pr_url=new_pr_url
+            )
+            print(tips)
+            return
         tips = MIG_TIPS.format(
             upstream_org=self.upstream_org, repo_name=self.repo_name,
             addon=self.addon, to_branch=self.to_branch.name, fork=self.fork,
