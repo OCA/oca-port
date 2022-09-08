@@ -1,5 +1,39 @@
+[project]
+name = "oca_port"
+authors = [
+    {name = "Odoo Community Association (OCA)"},
+    {name = "Sébastien Alix", email="sebastien.alix@camptocamp.com"}
+]
+description = "OCA tool to help with modules migration"
+readme = "README.md"
+keywords = ["odoo", "oca", "port", "migration", "modules", "addons"]
+license = {file = "LICENSE"}
+classifiers = [
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Programming Language :: Python :: 3",
+    "Framework :: Odoo",
+]
+dependencies = [
+    "click",
+    "gitpython",
+    "requests",
+]
+requires-python = ">=3.8"
+dynamic = ["version"]
+
+[project.urls]
+homepage = "https://github.com/OCA/oca-port"
+documentation = "https://github.com/OCA/oca-port"
+repository = "https://github.com/OCA/oca-port"
+
+[project.scripts]
+oca-port = "oca_port:main"
+
 [build-system]
 requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages]
+find = {}
 
 [tool.setuptools_scm]
