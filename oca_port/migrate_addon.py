@@ -3,7 +3,6 @@
 
 import click
 import os
-import subprocess
 import tempfile
 import urllib.parse
 
@@ -115,7 +114,7 @@ class MigrateAddon():
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
-            self._run_pre_commit()
+            misc.run_pre_commit(self.repo, self.addon)
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(
@@ -176,21 +175,6 @@ class MigrateAddon():
             f"\t\tCommits history of {bc.BOLD}{self.addon}{bc.END} "
             f"has been migrated."
         )
-
-    def _run_pre_commit(self):
-        # Run pre-commit
-        print(
-            f"\tRun {bc.BOLD}pre-commit{bc.END} and commit changes if any..."
-        )
-        # First ensure that 'pre-commit' is initialized for the repository,
-        # then run it (without checking the return code on purpose)
-        subprocess.check_call("pre-commit install", shell=True)
-        subprocess.run("pre-commit run -a", shell=True)
-        if self.repo.untracked_files or self.repo.is_dirty():
-            self.repo.git.add("-A")
-            self.repo.git.commit(
-                "-m", f"[IMP] {self.addon}: black, isort, prettier", "--no-verify"
-            )
 
     def _print_tips(self, blacklisted=False):
         mig_tasks_url = MIG_TASKS_URL.format(branch=self.to_branch.name)

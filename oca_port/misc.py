@@ -6,6 +6,7 @@ import contextlib
 import json
 import re
 import os
+import subprocess
 
 import click
 import git
@@ -358,9 +359,8 @@ class InputStorage():
         # Commit all changes under ./.oca-port
         self.repo.index.add(self.storage_dirname)
         if self.repo.is_dirty():
-            self.repo.index.commit(
-                f".oca-port: store '{self.addon}' data", skip_hooks=True
-            )
+            run_pre_commit(self.repo, self.addon, commit=False, hook="prettier")
+            self.repo.index.commit(f"oca-port: store '{self.addon}' data")
             self.dirty = False
 
 
@@ -385,3 +385,23 @@ def _request_github(url, method="get", params=None, json=None):
     if not response.ok:
         raise RuntimeError(response.text)
     return response.json()
+
+
+def run_pre_commit(repo, addon, commit=True, hook=None):
+    # Run pre-commit
+    print(
+        f"\tRun {bcolors.BOLD}pre-commit{bcolors.END} and commit changes if any..."
+    )
+    # First ensure that 'pre-commit' is initialized for the repository,
+    # then run it (without checking the return code on purpose)
+    subprocess.check_call("pre-commit install", shell=True)
+    if hook:
+        subprocess.run(f"pre-commit run {hook}", shell=True)
+    else:
+        subprocess.run("pre-commit run -a", shell=True)
+    if repo.untracked_files or repo.is_dirty():
+        repo.git.add("-A")
+        if commit:
+            repo.git.commit(
+                "-m", f"[IMP] {addon}: black, isort, prettier", "--no-verify"
+            )
