@@ -85,7 +85,7 @@ The user will be asked if he wants to port them.
 order to push the resulting branch on the user's remote.
     """
     repo = git.Repo()
-    if repo.is_dirty():
+    if repo.is_dirty(untracked_files=True):
         raise click.ClickException("changes not committed detected in this repository.")
     repo_name = repo_name or os.path.basename(os.getcwd())
     if not user_org:
