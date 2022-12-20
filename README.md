@@ -4,6 +4,18 @@ oca-port
 Tool helping to port an addon or missing commits of an addon from one branch
 to another.
 
+Installing
+----------
+
+    $ pipx install oca-port
+    $ #OR
+    $ git clone git@github.com:oca/oca-port.git
+    $ cd oca-port
+    $ pipx install .
+    
+Using
+-----
+
 If the addon does not exist on the target branch, it will assist the user in
 the migration, following the OCA migration guide.
 
