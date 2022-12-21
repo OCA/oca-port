@@ -412,6 +412,9 @@ class BranchesDiff():
                 continue
             commits_list.append(com)
             commits_by_sha[commit.hexsha] = com
+        # Put ancestors at the beginning of the list to loop with
+        # the expected order
+        commits_list.reverse()
         return commits_list, commits_by_sha
 
     @staticmethod
@@ -500,6 +503,8 @@ class BranchesDiff():
         :return: a dict {PullRequest: {Commit: data, ...}, ...}
         """
         commits_by_pr = defaultdict(list)
+        # Fake PR for commits w/o related PR
+        fake_pr = misc.PullRequest(*[""] * 6, tuple(), tuple())
         for commit in self.from_branch_path_commits:
             if commit in self.to_branch_all_commits:
                 continue
@@ -514,12 +519,11 @@ class BranchesDiff():
                     data for data in gh_commit_pulls
                     if data["base"]["repo"]["full_name"] == full_repo_name
                 ]
-                # Fake PR for commits w/o related PR
-                pr = misc.PullRequest(*[""] * 6, tuple(), tuple())
                 if gh_commit_pull:
                     pr = self._new_pull_request_from_github_data(gh_commit_pull[0])
                     # Get all commits of the related PR as they could update
                     # others addons than the one the user is interested in
+                    # NOTE: commits fetched from PR are already in the right order
                     gh_pr_commits = misc._request_github(
                         f"repos/{self.upstream_org}/{self.repo_name}"
                         f"/pulls/{pr.number}/commits"
@@ -590,9 +594,9 @@ class BranchesDiff():
                                 break
                         else:
                             commits_by_pr[pr].append(pr_commit)
-                # No related PR: add the current commit anyway
+                # No related PR: add the commit to the fake PR
                 else:
-                    commits_by_pr[pr].append(commit)
+                    commits_by_pr[fake_pr].append(commit)
             else:
                 # FIXME log?
                 pass
