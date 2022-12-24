@@ -65,9 +65,10 @@ from .port_addon_pr import PortAddonPullRequest
               help="List the commits of Pull Requests.")
 @click.option("--non-interactive", is_flag=True,
               help="Disable all interactive prompts.")
+@click.option("--no-cache", is_flag=True, help="Disable user's cache.")
 def main(
         from_branch, to_branch, addon, upstream_org, upstream, repo_name,
-        fork, user_org, verbose, non_interactive
+        fork, user_org, verbose, non_interactive, no_cache
         ):
     """Migrate ADDON from FROM_BRANCH to TO_BRANCH or list Pull Requests to port
     if ADDON already exists on TO_BRANCH.
@@ -109,18 +110,21 @@ order to push the resulting branch on the user's remote.
     _check_branches(from_branch, to_branch)
     _check_addon_exists(addon, from_branch, raise_exc=True)
     storage = utils.storage.InputStorage(to_branch, addon)
+    cache = utils.cache.UserCacheFactory(
+        upstream_org, repo_name, addon, from_branch, to_branch, no_cache
+    ).build()
     # Check if the addon (folder) exists on the target branch
     #   - if it already exists, check if some PRs could be ported
     if _check_addon_exists(addon, to_branch):
         PortAddonPullRequest(
             repo, upstream_org, repo_name, from_branch, to_branch,
-            fork, user_org, addon, storage, verbose, non_interactive
+            fork, user_org, addon, storage, cache, verbose, non_interactive
         ).run()
     #   - if not, migrate it
     else:
         MigrateAddon(
             repo, upstream_org, repo_name, from_branch, to_branch,
-            fork, user_org, addon, storage, verbose, non_interactive
+            fork, user_org, addon, storage, cache, verbose, non_interactive
         ).run()
 
 

@@ -61,7 +61,8 @@ BLACKLIST_TIPS = "\n".join([
 class MigrateAddon():
     def __init__(
             self, repo, upstream_org, repo_name, from_branch, to_branch,
-            fork, user_org, addon, storage, verbose=False, non_interactive=False
+            fork, user_org, addon, storage, cache=None, verbose=False,
+            non_interactive=False
             ):
         self.repo = repo
         self.upstream_org = upstream_org
@@ -72,6 +73,7 @@ class MigrateAddon():
         self.user_org = user_org
         self.addon = addon
         self.storage = storage
+        self.cache = cache
         self.mig_branch = g.Branch(
             repo, MIG_BRANCH_NAME.format(branch=to_branch.name[:4], addon=addon)
         )
@@ -120,7 +122,7 @@ class MigrateAddon():
         PortAddonPullRequest(
             self.repo, self.upstream_org, self.repo_name,
             self.from_branch, self.mig_branch, self.fork, self.user_org,
-            self.addon, self.storage, self.verbose,
+            self.addon, self.storage, self.cache, self.verbose,
             create_branch=False, push_branch=False
         ).run()
         self._print_tips()

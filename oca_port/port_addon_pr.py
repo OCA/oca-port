@@ -55,7 +55,7 @@ def path_to_skip(commit_path):
 class PortAddonPullRequest():
     def __init__(
             self, repo, upstream_org, repo_name,
-            from_branch, to_branch, fork, user_org, addon, storage,
+            from_branch, to_branch, fork, user_org, addon, storage, cache=None,
             verbose=False, non_interactive=False,
             create_branch=True, push_branch=True
             ):
@@ -69,6 +69,7 @@ class PortAddonPullRequest():
         self.user_org = user_org
         self.addon = addon
         self.storage = storage
+        self.cache = cache
         self.verbose = verbose
         self.non_interactive = non_interactive
         self.create_branch = create_branch
@@ -82,7 +83,7 @@ class PortAddonPullRequest():
         )
         branches_diff = BranchesDiff(
             self.repo, self.upstream_org, self.repo_name, self.addon,
-            self.from_branch, self.to_branch, self.storage
+            self.from_branch, self.to_branch, self.storage, self.cache
         )
         branches_diff.print_diff(self.verbose)
         if self.non_interactive:
@@ -373,13 +374,16 @@ class PortAddonPullRequest():
 class BranchesDiff():
     """Helper to compare easily commits (and related PRs) between two branches."""
     def __init__(
-            self, repo, upstream_org, repo_name, path, from_branch, to_branch, storage
+            self, repo, upstream_org, repo_name, path,
+            from_branch, to_branch, storage, cache
             ):
         self.repo = repo
         self.upstream_org = upstream_org
         self.repo_name = repo_name
         self.path = path
         self.from_branch, self.to_branch = from_branch, to_branch
+        self.storage = storage
+        self.cache = cache
         self.from_branch_path_commits, _ = self._get_branch_commits(
             self.from_branch.ref(), path
         )
@@ -390,7 +394,6 @@ class BranchesDiff():
             self.to_branch.ref(), self.path
         )
         self.to_branch_all_commits, _ = self._get_branch_commits(self.to_branch.ref())
-        self.storage = storage
         self.commits_diff = self.get_commits_diff()
 
     def _get_branch_commits(self, branch, path="."):
@@ -408,6 +411,8 @@ class BranchesDiff():
         commits_list = []
         commits_by_sha = {}
         for commit in commits:
+            if self.cache.is_commit_ported(commit.hexsha):
+                continue
             com = g.Commit(commit)
             if self._skip_commit(com):
                 continue
@@ -508,6 +513,7 @@ class BranchesDiff():
         fake_pr = g.PullRequest(*[""] * 6, tuple(), tuple())
         for commit in self.from_branch_path_commits:
             if commit in self.to_branch_all_commits:
+                self.cache.mark_commit_as_ported(commit.hexsha)
                 continue
             # Get related Pull Request if any
             if any("github.com" in remote.url for remote in self.repo.remotes):
@@ -529,6 +535,9 @@ class BranchesDiff():
                         f"repos/{self.upstream_org}/{self.repo_name}"
                         f"/pulls/{pr.number}/commits"
                     )
+                    # TODO cache PR data to not request GH several times
+                    #   => commits of a merged PR can't change anymore, it's OK
+                    #   to cache this
                     for gh_pr_commit in gh_pr_commits:
                         try:
                             raw_commit = self.repo.commit(gh_pr_commit["sha"])
