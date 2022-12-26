@@ -9,8 +9,8 @@ import os
 import click
 import git
 
-from . import misc
-from .misc import bcolors as bc
+from .utils import misc, git as g, github
+from .utils.misc import bcolors as bc
 
 AUTHOR_EMAILS_TO_SKIP = [
     "transbot@odoo-community.org",
@@ -190,7 +190,7 @@ class PortAddonPullRequest():
                     "recreate it?\n\t(⚠️  you will lose the existing branch)"
                 )
                 if not click.confirm(confirm):
-                    return misc.Branch(self.repo, branch_name), based_on_previous
+                    return g.Branch(self.repo, branch_name), based_on_previous
                 self.repo.delete_head(branch_name, "-f")
             if previous_pr and click.confirm(
                     f"\tUse the previous {bc.BOLD}PR #{previous_pr.number}{bc.END} "
@@ -207,7 +207,7 @@ class PortAddonPullRequest():
         # If the PR has been blacklisted we need to commit this information
         if self.storage.dirty:
             self.storage.commit()
-            return misc.Branch(self.repo, branch_name), based_on_previous
+            return g.Branch(self.repo, branch_name), based_on_previous
 
         # Cherry-pick commits of the source PR
         for commit in commits:
@@ -253,7 +253,7 @@ class PortAddonPullRequest():
                         ):
                     self.repo.git.am("--abort")
                     continue
-        return misc.Branch(self.repo, branch_name), based_on_previous
+        return g.Branch(self.repo, branch_name), based_on_previous
 
     @staticmethod
     def _skip_diff(commit, diff):
@@ -340,7 +340,7 @@ class PortAddonPullRequest():
                 f"state:open {title} in:title"
             ),
         }
-        response = misc._request_github("search/issues", params=params)
+        response = github.request("search/issues", params=params)
         if response["items"]:
             return response["items"][0]["html_url"]
 
@@ -357,7 +357,7 @@ class PortAddonPullRequest():
                 f"to '{bc.BOLD}{self.to_branch.name}{bc.END}' "
                 f"against {bc.BOLD}{self.upstream_org}/{self.repo_name}{bc.END}?"
                 ):
-            response = misc._request_github(
+            response = github.request(
                 f"repos/{self.upstream_org}/{self.repo_name}/pulls",
                 method="post",
                 json=pr_data
@@ -408,7 +408,7 @@ class BranchesDiff():
         commits_list = []
         commits_by_sha = {}
         for commit in commits:
-            com = misc.Commit(commit)
+            com = g.Commit(commit)
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
@@ -505,13 +505,13 @@ class BranchesDiff():
         """
         commits_by_pr = defaultdict(list)
         # Fake PR for commits w/o related PR
-        fake_pr = misc.PullRequest(*[""] * 6, tuple(), tuple())
+        fake_pr = g.PullRequest(*[""] * 6, tuple(), tuple())
         for commit in self.from_branch_path_commits:
             if commit in self.to_branch_all_commits:
                 continue
             # Get related Pull Request if any
             if any("github.com" in remote.url for remote in self.repo.remotes):
-                gh_commit_pulls = misc._request_github(
+                gh_commit_pulls = github.request(
                     f"repos/{self.upstream_org}/{self.repo_name}"
                     f"/commits/{commit.hexsha}/pulls"
                 )
@@ -525,7 +525,7 @@ class BranchesDiff():
                     # Get all commits of the related PR as they could update
                     # others addons than the one the user is interested in
                     # NOTE: commits fetched from PR are already in the right order
-                    gh_pr_commits = misc._request_github(
+                    gh_pr_commits = github.request(
                         f"repos/{self.upstream_org}/{self.repo_name}"
                         f"/pulls/{pr.number}/commits"
                     )
@@ -536,7 +536,7 @@ class BranchesDiff():
                             # Ignore commits referenced by a PR but not present
                             # in the stable branches
                             continue
-                        pr_commit = misc.Commit(raw_commit)
+                        pr_commit = g.Commit(raw_commit)
                         if self._skip_commit(pr_commit):
                             continue
                         pr_commit_paths = set(
@@ -559,7 +559,7 @@ class BranchesDiff():
                             # on each addon separately
                             to_branch_all_commits = self.to_branch_all_commits[:]
                             skip_pr_commit = False
-                            with misc.no_strict_commit_equality():
+                            with g.no_strict_commit_equality():
                                 while pr_commit in to_branch_all_commits:
                                     index = to_branch_all_commits.index(pr_commit)
                                     ported_commit = to_branch_all_commits.pop(index)
@@ -625,7 +625,7 @@ class BranchesDiff():
         pr_title = data["title"]
         pr_body = data["body"]
         pr_merge_at = data["merged_at"]
-        return misc.PullRequest(
+        return g.PullRequest(
             number=pr_number,
             url=pr_url,
             author=pr_author,

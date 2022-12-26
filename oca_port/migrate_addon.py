@@ -6,8 +6,8 @@ import os
 import tempfile
 import urllib.parse
 
-from . import misc
-from .misc import bcolors as bc
+from .utils import misc, git as g
+from .utils.misc import bcolors as bc
 from .port_addon_pr import PortAddonPullRequest
 
 MIG_BRANCH_NAME = (
@@ -72,7 +72,7 @@ class MigrateAddon():
         self.user_org = user_org
         self.addon = addon
         self.storage = storage
-        self.mig_branch = misc.Branch(
+        self.mig_branch = g.Branch(
             repo, MIG_BRANCH_NAME.format(branch=to_branch.name[:4], addon=addon)
         )
         self.verbose = verbose
@@ -114,7 +114,7 @@ class MigrateAddon():
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
-            misc.run_pre_commit(self.repo, self.addon)
+            g.run_pre_commit(self.repo, self.addon)
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(

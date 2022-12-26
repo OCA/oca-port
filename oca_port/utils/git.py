@@ -1,46 +1,17 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
-from collections import abc, defaultdict
+from collections import abc
 import contextlib
-import json
 import re
-import os
 import subprocess
 
-import click
-import git
-import requests
+import git as g
 
-MANIFEST_NAMES = ("__manifest__.py", "__openerp__.py")
-
-
-GITHUB_API_URL = "https://api.github.com"
+from . import misc
+from .misc import bcolors as bc
 
 PO_FILE_REGEX = re.compile(r".*i18n/.+\.pot?$")
-
-
-# Copy-pasted from OCA/maintainer-tools
-def get_manifest_path(addon_dir):
-    for manifest_name in MANIFEST_NAMES:
-        manifest_path = os.path.join(addon_dir, manifest_name)
-        if os.path.isfile(manifest_path):
-            return manifest_path
-
-
-class bcolors:
-    HEADER = "\033[95m"
-    OKBLUE = "\033[94m"
-    OKCYAN = '\033[96m'
-    OKGREEN = "\033[92m"
-    WARNING = "\033[93m"
-    FAIL = "\033[91m"
-    ENDC = "\033[39m"
-    BOLD = "\033[1m"
-    DIM = "\033[2m"
-    ENDD = "\033[22m"
-    UNDERLINE = "\033[4m"
-    END = "\033[0m"
 
 
 class Branch():
@@ -125,7 +96,7 @@ class Commit():
         other_value = other.message.replace("\n", " ").replace("  ", " ")
         # 'git am' without '--keep' option removes text in '[]' brackets
         # generating false-positive.
-        return clean_text(self_value) == clean_text(other_value)
+        return misc.clean_text(self_value) == misc.clean_text(other_value)
 
     def __eq__(self, other):
         """Consider a commit equal to another if some of its keys are the same."""
@@ -159,7 +130,7 @@ class Commit():
         addons = set()
         for diff in self.diffs:
             if (
-                    any(manifest in diff.b_path for manifest in MANIFEST_NAMES)
+                    any(manifest in diff.b_path for manifest in misc.MANIFEST_NAMES)
                     and diff.change_type == "A"
                     ):
                 addons.add(diff.b_path.split("/", maxsplit=1)[0])
@@ -198,7 +169,7 @@ class Commit():
     def diffs(self):
         if self.raw_commit.parents:
             return self.raw_commit.diff(self.raw_commit.parents[0], R=True)
-        return self.raw_commit.diff(git.NULL_TREE)
+        return self.raw_commit.diff(g.NULL_TREE)
 
 
 @contextlib.contextmanager
@@ -245,156 +216,10 @@ class PullRequest(abc.Hashable):
         return list(self.paths - self.ported_paths)
 
 
-class InputStorage():
-    """Store the user inputs related to an addon.
-
-    If commits/pull requests of an addon may be ported, some of them could be
-    false-positive and as such the user can choose to not port them.
-    This class will help to store these informations so the tool won't list
-    anymore these commits the next time we perform an analysis on the same addon.
-
-    Technically the data are stored in one JSON file per addon in a hidden
-    folder at the root of the repository. E.g:
-
-        {
-          "no_migration": "included in standard"
-        }
-
-    Or:
-
-        {
-          "pull_requests": {
-            490: "lint changes"
-          }
-        }
-    """
-    storage_dirname = ".oca/oca-port"
-
-    def __init__(self, to_branch, addon):
-        self.to_branch = to_branch
-        self.repo = self.to_branch.repo
-        self.root_path = self.repo.working_dir
-        self.addon = addon
-        self._data = self._get_data()
-        self.dirty = False
-
-    def _get_data(self):
-        """Return the data of the current repository.
-
-        If a JSON file is found, return its content, otherwise return an empty
-        dictionary.
-        """
-
-        def defaultdict_from_dict(d):
-            nd = lambda: defaultdict(nd)    # noqa
-            ni = nd()
-            ni.update(d)
-            return ni
-
-        try:
-            # Read the JSON file from 'to_branch'
-            tree = self.repo.commit(self.to_branch.ref()).tree
-            blob = tree/self.storage_dirname/"blacklist"/f"{self.addon}.json"
-            content = blob.data_stream.read().decode()
-            return json.loads(content, object_hook=defaultdict_from_dict)
-        except KeyError:
-            nested_dict = lambda: defaultdict(nested_dict)  # noqa
-            return nested_dict()
-
-    def save(self):
-        """Store the data at the root of the current repository."""
-        if not self._data or not self.dirty:
-            return False
-        file_path = self._get_file_path()
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "w") as file_:
-            json.dump(self._data, file_, indent=2)
-        return True
-
-    def _get_file_path(self):
-        return os.path.join(
-            self.root_path, self.storage_dirname, "blacklist", f"{self.addon}.json"
-        )
-
-    def is_pr_blacklisted(self, pr_ref):
-        pr_ref = str(pr_ref or "orphaned_commits")
-        return self._data.get("pull_requests", {}).get(pr_ref, False)
-
-    def blacklist_pr(self, pr_ref, confirm=False, reason=None):
-        if confirm and not click.confirm("\tBlacklist this PR?"):
-            return
-        if not reason:
-            reason = click.prompt("\tReason", type=str)
-        pr_ref = str(pr_ref or "orphaned_commits")
-        self._data["pull_requests"][pr_ref] = reason or "Unknown"
-        self.dirty = True
-
-    def is_addon_blacklisted(self):
-        entry = self._data.get("no_migration")
-        if entry:
-            return entry
-        return False
-
-    def blacklist_addon(self, confirm=False, reason=None):
-        if confirm and not click.confirm("\tBlacklist this module?"):
-            return
-        if not reason:
-            reason = click.prompt("Reason", type=str)
-        self._data["no_migration"] = reason or "Unknown"
-        self.dirty = True
-
-    def commit(self):
-        """Commit all files contained in the storage directory."""
-        if not self.save():
-            return
-        changed_paths = get_changed_paths(self.repo)
-        all_in_storage = all(
-            path.startswith(self.storage_dirname) for path in changed_paths
-        )
-        if self.repo.is_dirty() and not all_in_storage:
-            raise click.ClickException(
-                "changes not committed detected in this repository."
-            )
-        # Ensure to be on a dedicated branch
-        if self.repo.active_branch.name == self.to_branch.name:
-            raise click.ClickException(
-                "performing commit on upstream branch is not allowed."
-            )
-        # Commit all changes under ./.oca-port
-        self.repo.index.add(self.storage_dirname)
-        if self.repo.is_dirty():
-            run_pre_commit(self.repo, self.addon, commit=False, hook="prettier")
-            self.repo.index.commit(f"oca-port: store '{self.addon}' data")
-            self.dirty = False
-
-
-def clean_text(text):
-    """Clean text by removing patterns like '13.0', '[13.0]' or '[IMP]'."""
-    return re.sub(r"\[.*\]|\d+\.\d+", "", text).strip()
-
-
-def _request_github(url, method="get", params=None, json=None):
-    """Request GitHub API."""
-    headers = {"Accept": "application/vnd.github.groot-preview+json"}
-    if os.environ.get("GITHUB_TOKEN"):
-        token = os.environ.get("GITHUB_TOKEN")
-        headers.update({"Authorization": f"token {token}"})
-    full_url = "/".join([GITHUB_API_URL, url])
-    kwargs = {"headers": headers}
-    if json:
-        kwargs.update(json=json)
-    if params:
-        kwargs.update(params=params)
-    response = getattr(requests, method)(full_url, **kwargs)
-    if not response.ok:
-        raise RuntimeError(response.text)
-    return response.json()
-
-
 def run_pre_commit(repo, addon, commit=True, hook=None):
     # Run pre-commit
     print(
-        f"\tRun {bcolors.BOLD}pre-commit{bcolors.END} and commit changes if any..."
+        f"\tRun {bc.BOLD}pre-commit{bc.END} and commit changes if any..."
     )
     # First ensure that 'pre-commit' is initialized for the repository,
     # then run it (without checking the return code on purpose)

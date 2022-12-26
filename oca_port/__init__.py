@@ -43,8 +43,8 @@ import os
 import click
 import git
 
-from . import misc
-from .misc import bcolors as bc
+from . import utils
+from .utils.misc import bcolors as bc
 from .migrate_addon import MigrateAddon
 from .port_addon_pr import PortAddonPullRequest
 
@@ -101,14 +101,14 @@ order to push the resulting branch on the user's remote.
             raise click.ClickException(error_msg)
     try:
         # Parse source and target branches
-        from_branch = misc.Branch(repo, from_branch, default_remote=upstream)
-        to_branch = misc.Branch(repo, to_branch, default_remote=upstream)
+        from_branch = utils.git.Branch(repo, from_branch, default_remote=upstream)
+        to_branch = utils.git.Branch(repo, to_branch, default_remote=upstream)
     except ValueError as exc:
         _check_remote(repo_name, *exc.args)
     _fetch_branches(from_branch, to_branch, verbose=verbose)
     _check_branches(from_branch, to_branch)
     _check_addon_exists(addon, from_branch, raise_exc=True)
-    storage = misc.InputStorage(to_branch, addon)
+    storage = utils.storage.InputStorage(to_branch, addon)
     # Check if the addon (folder) exists on the target branch
     #   - if it already exists, check if some PRs could be ported
     if _check_addon_exists(addon, to_branch):
