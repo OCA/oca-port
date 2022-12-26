@@ -53,5 +53,7 @@ to base the next PR on the previous one, allowing the user to cumulate ported
 PRs in one branch and creating a draft PR against the upstream repository
 with all of them.
 
+More details here : [OCA Days 2022 - Sébastien Alix and Simone Orsi: oca-port:new OCA tool to help with modules migration](https://www.youtube.com/watch?v=idGLkQiJ5N0)
+
 **Output example (with --verbose):**
 ![oca_port_pr_verbose](https://user-images.githubusercontent.com/5315285/129207041-12ac6c4a-ea96-4b8c-bd68-ae661531ad92.png)
