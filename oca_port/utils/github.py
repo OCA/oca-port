@@ -25,3 +25,18 @@ def request(url, method="get", params=None, json=None):
     if not response.ok:
         raise RuntimeError(response.text)
     return response.json()
+
+
+def get_original_pr(upstream_org: str, repo_name: str, branch: str, commit_sha: str):
+    """Return original GitHub PR data of a commit."""
+    gh_commit_pulls = request(
+        f"repos/{upstream_org}/{repo_name}/commits/{commit_sha}/pulls"
+    )
+    gh_commit_pull = [
+        data for data in gh_commit_pulls
+        if (
+            data["base"]["ref"] == branch
+            and data["base"]["repo"]["full_name"] == f"{upstream_org}/{repo_name}"
+        )
+    ]
+    return gh_commit_pull and gh_commit_pull[0] or {}

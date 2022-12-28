@@ -185,7 +185,7 @@ class PullRequest(abc.Hashable):
     eq_attrs = ("number", "url", "author", "title", "body", "merged_at")
 
     def __init__(
-            self, number, url, author, title, body, merged_at,
+            self, number, url, author, title, body, merged_at, commits=None,
             paths=None, ported_paths=None
             ):
         self.number = number
@@ -194,6 +194,7 @@ class PullRequest(abc.Hashable):
         self.title = title
         self.body = body
         self.merged_at = merged_at
+        self.commits = commits if commits else []
         self.paths = set(paths) if paths else set()
         self.ported_paths = set(ported_paths) if ported_paths else set()
 
