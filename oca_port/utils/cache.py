@@ -1,11 +1,13 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
+from collections import defaultdict
+import json
 import logging
 import pathlib
 import os
 
-from . import git as g
+from . import git as g, misc
 
 
 _logger = logging.getLogger(__name__)
@@ -61,6 +63,14 @@ class NoCache():
         # A commit is always considered as not ported
         return False
 
+    def store_commit_pr(self, commit_sha: str, data):
+        # Do nothing
+        pass
+
+    def get_pr_from_commit(self, commit_sha: str):
+        # No PR data to return
+        return {}
+
 
 class UserCache():
     """Manage the user's cache, in respect to XDG conventions.
@@ -72,6 +82,7 @@ class UserCache():
     """
     _cache_dirname = "oca-port"
     _ported_dirname = "ported"
+    _to_port_dirname = "to_port"
 
     def __init__(
             self, upstream_org: str, repo_name: str, addon: str,
@@ -86,6 +97,8 @@ class UserCache():
         self.dir_path = self._get_dir_path()
         self._ported_commits_path = self._get_ported_commits_path()
         self._ported_commits = self._get_ported_commits()
+        self._commits_to_port_path = self._get_commits_to_port_path()
+        self._commits_to_port = self._get_commits_to_port()
 
     @classmethod
     def _get_dir_path(cls):
@@ -109,10 +122,36 @@ class UserCache():
             file_name
         )
 
+    def _get_commits_to_port_path(self):
+        """Return the file path storing cached data of commits to port."""
+        file_name = (
+            f"{self._addon}_{self._from_branch.name}_"
+            f"to_{self._to_branch.name}.json"
+        )
+        return self.dir_path.joinpath(
+            self._to_port_dirname,
+            self._upstream_org,
+            self._repo_name,
+            file_name
+        )
+
     def _get_ported_commits(self):
         self._ported_commits_path.parent.mkdir(parents=True, exist_ok=True)
         self._ported_commits_path.touch(exist_ok=True)
         return self._ported_commits_path.read_text().splitlines()
+
+    def _get_commits_to_port(self):
+        self._commits_to_port_path.parent.mkdir(parents=True, exist_ok=True)
+        self._commits_to_port_path.touch(exist_ok=True)
+        try:
+            with self._commits_to_port_path.open() as file_:
+                return json.load(file_, object_hook=misc.defaultdict_from_dict)
+        except json.JSONDecodeError:
+            # Mainly to handle empty files (first initialization of the cache)
+            # but also to not crash if JSON files get corrupted.
+            # Returns a "nested dict" object to not worry about checking keys
+            nested_dict = lambda: defaultdict(nested_dict)  # noqa
+            return nested_dict()
 
     def mark_commit_as_ported(self, commit_sha: str):
         """Mark commit as ported."""
@@ -125,3 +164,21 @@ class UserCache():
     def is_commit_ported(self, commit_sha: str):
         """Return `True` if commit is already ported."""
         return commit_sha in self._ported_commits
+
+    def store_commit_pr(self, commit_sha: str, data):
+        """Store the original PR data of a commit."""
+        pr_number = data["number"]
+        self._commits_to_port["pull_requests"][str(pr_number)] = data
+        self._commits_to_port["commits"][commit_sha]["pr"] = pr_number
+        try:
+            with self._commits_to_port_path.open(mode="w") as file_:
+                json.dump(self._commits_to_port, file_, indent=2)
+        except:
+            pass
+
+    def get_pr_from_commit(self, commit_sha: str):
+        """Return the original PR data of a commit."""
+        pr_number = self._commits_to_port["commits"][commit_sha]["pr"]
+        if pr_number:
+            return self._commits_to_port["pull_requests"][str(pr_number)]
+        return {}

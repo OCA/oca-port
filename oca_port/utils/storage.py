@@ -7,7 +7,7 @@ import os
 
 import click
 
-from . import git as g
+from . import git as g, misc
 
 
 class InputStorage():
@@ -49,19 +49,12 @@ class InputStorage():
         If a JSON file is found, return its content, otherwise return an empty
         dictionary.
         """
-
-        def defaultdict_from_dict(d):
-            nd = lambda: defaultdict(nd)    # noqa
-            ni = nd()
-            ni.update(d)
-            return ni
-
         try:
             # Read the JSON file from 'to_branch'
             tree = self.repo.commit(self.to_branch.ref()).tree
             blob = tree/self.storage_dirname/"blacklist"/f"{self.addon}.json"
             content = blob.data_stream.read().decode()
-            return json.loads(content, object_hook=defaultdict_from_dict)
+            return json.loads(content, object_hook=misc.defaultdict_from_dict)
         except KeyError:
             nested_dict = lambda: defaultdict(nested_dict)  # noqa
             return nested_dict()

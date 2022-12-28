@@ -605,34 +605,35 @@ class BranchesDiff():
 
     def _get_original_pr(self, commit: g.Commit):
         """Return the original PR of a given commit."""
-        # TODO cache PR data to not request GH several times
-        #   => commits of a merged PR can't change anymore, it's OK to cache this
+        # Try to get the data from the user's cache first
+        data = self.cache.get_pr_from_commit(commit.hexsha)
+        if data:
+            return g.PullRequest(**data)
+        # Request GitHub to get them
         if not any("github.com" in remote.url for remote in self.repo.remotes):
             return
-        data = github.get_original_pr(
-            self.upstream_org, self.repo_name, self.from_branch.name, commit.hexsha
+        raw_data = github.get_original_pr(
+            self.upstream_org, self.repo_name,
+            self.from_branch.name, commit.hexsha
         )
-        if data:
-            pr_number = data["number"]
-            pr_url = data["html_url"]
-            pr_author = data["user"].get("login", "")
-            pr_title = data["title"]
-            pr_body = data["body"]
-            pr_merge_at = data["merged_at"]
+        if raw_data:
             # Get all commits of the PR as they could update others addons
             # than the one the user is interested in.
             # NOTE: commits fetched from PR are already in the right order
+            pr_number = raw_data["number"]
             pr_commits_data = github.request(
                 f"repos/{self.upstream_org}/{self.repo_name}"
-                f"/pulls/{pr_number}/commits"
+                f"/pulls/{pr_number}/commits?per_page=100"
             )
             pr_commits = [pr["sha"] for pr in pr_commits_data]
-            return g.PullRequest(
-                number=pr_number,
-                url=pr_url,
-                author=pr_author,
-                title=pr_title,
-                body=pr_body,
-                merged_at=pr_merge_at,
-                commits=pr_commits,
-            )
+            data = {
+                "number": raw_data["number"],
+                "url": raw_data["html_url"],
+                "author": raw_data["user"].get("login", ""),
+                "title": raw_data["title"],
+                "body": raw_data["body"],
+                "merged_at": raw_data["merged_at"],
+                "commits": pr_commits,
+            }
+            self.cache.store_commit_pr(commit.hexsha, data)
+            return g.PullRequest(**data)

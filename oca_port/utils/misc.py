@@ -1,6 +1,7 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
+from collections import defaultdict
 import re
 import os
 
@@ -33,3 +34,10 @@ class bcolors:
 def clean_text(text):
     """Clean text by removing patterns like '13.0', '[13.0]' or '[IMP]'."""
     return re.sub(r"\[.*\]|\d+\.\d+", "", text).strip()
+
+
+def defaultdict_from_dict(d):
+    nd = lambda: defaultdict(nd)    # noqa
+    ni = nd()
+    ni.update(d)
+    return ni
