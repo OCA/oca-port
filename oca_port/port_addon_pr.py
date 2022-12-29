@@ -14,6 +14,7 @@ from .misc import bcolors as bc
 
 AUTHOR_EMAILS_TO_SKIP = [
     "transbot@odoo-community.org",
+    "noreply@weblate.org",
     "oca-git-bot@odoo-community.org",
     "oca+oca-travis@odoo-community.org",
     "oca-ci@odoo-community.org",
