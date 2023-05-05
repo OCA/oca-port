@@ -347,7 +347,11 @@ class InputStorage():
         """Commit all files contained in the storage directory."""
         if not self.save():
             return
-        if self.repo.is_dirty():
+        changed_paths = get_changed_paths(self.repo)
+        all_in_storage = all(
+            path.startswith(self.storage_dirname) for path in changed_paths
+        )
+        if self.repo.is_dirty() and not all_in_storage:
             raise click.ClickException(
                 "changes not committed detected in this repository."
             )
@@ -405,3 +409,18 @@ def run_pre_commit(repo, addon, commit=True, hook=None):
             repo.git.commit(
                 "-m", f"[IMP] {addon}: black, isort, prettier", "--no-verify"
             )
+
+
+def get_changed_paths(repo, modified=True, staged=True):
+    """Return a list of file paths that have been changed.
+
+    :param modified: include modified files (not added to the index)
+    :param staged: include staged files (added to the index)
+    :return: list of changed file paths
+    """
+    changed_diff = []
+    if modified:
+        changed_diff.extend(repo.index.diff(None))
+    if staged:
+        changed_diff.extend(repo.index.diff("HEAD"))
+    return [diff.a_path or diff.b_path for diff in changed_diff]
