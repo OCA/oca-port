@@ -30,7 +30,7 @@ repository = "https://github.com/OCA/oca-port"
 oca-port = "oca_port:main"
 
 [build-system]
-requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=64", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages]
