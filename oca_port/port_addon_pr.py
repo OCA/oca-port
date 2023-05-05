@@ -9,8 +9,8 @@ import os
 import click
 import git
 
-from . import misc
-from .misc import bcolors as bc
+from .utils import misc, git as g, github
+from .utils.misc import bcolors as bc
 
 AUTHOR_EMAILS_TO_SKIP = [
     "transbot@odoo-community.org",
@@ -41,6 +41,9 @@ FILES_TO_KEEP = [
     "oca_dependencies.txt",
 ]
 
+# Fake PR for commits w/o any PR (used as fallback)
+FAKE_PR = g.PullRequest(*[""] * 6)
+
 
 def path_to_skip(commit_path):
     """Return True if the commit path should not be ported."""
@@ -55,7 +58,7 @@ def path_to_skip(commit_path):
 class PortAddonPullRequest():
     def __init__(
             self, repo, upstream_org, repo_name,
-            from_branch, to_branch, fork, user_org, addon, storage,
+            from_branch, to_branch, fork, user_org, addon, storage, cache=None,
             verbose=False, non_interactive=False,
             create_branch=True, push_branch=True
             ):
@@ -69,6 +72,7 @@ class PortAddonPullRequest():
         self.user_org = user_org
         self.addon = addon
         self.storage = storage
+        self.cache = cache
         self.verbose = verbose
         self.non_interactive = non_interactive
         self.create_branch = create_branch
@@ -82,7 +86,7 @@ class PortAddonPullRequest():
         )
         branches_diff = BranchesDiff(
             self.repo, self.upstream_org, self.repo_name, self.addon,
-            self.from_branch, self.to_branch, self.storage
+            self.from_branch, self.to_branch, self.storage, self.cache
         )
         branches_diff.print_diff(self.verbose)
         if self.non_interactive:
@@ -190,7 +194,7 @@ class PortAddonPullRequest():
                     "recreate it?\n\t(⚠️  you will lose the existing branch)"
                 )
                 if not click.confirm(confirm):
-                    return misc.Branch(self.repo, branch_name), based_on_previous
+                    return g.Branch(self.repo, branch_name), based_on_previous
                 self.repo.delete_head(branch_name, "-f")
             if previous_pr and click.confirm(
                     f"\tUse the previous {bc.BOLD}PR #{previous_pr.number}{bc.END} "
@@ -207,7 +211,7 @@ class PortAddonPullRequest():
         # If the PR has been blacklisted we need to commit this information
         if self.storage.dirty:
             self.storage.commit()
-            return misc.Branch(self.repo, branch_name), based_on_previous
+            return g.Branch(self.repo, branch_name), based_on_previous
 
         # Cherry-pick commits of the source PR
         for commit in commits:
@@ -253,7 +257,7 @@ class PortAddonPullRequest():
                         ):
                     self.repo.git.am("--abort")
                     continue
-        return misc.Branch(self.repo, branch_name), based_on_previous
+        return g.Branch(self.repo, branch_name), based_on_previous
 
     @staticmethod
     def _skip_diff(commit, diff):
@@ -340,7 +344,7 @@ class PortAddonPullRequest():
                 f"state:open {title} in:title"
             ),
         }
-        response = misc._request_github("search/issues", params=params)
+        response = github.request("search/issues", params=params)
         if response["items"]:
             return response["items"][0]["html_url"]
 
@@ -357,7 +361,7 @@ class PortAddonPullRequest():
                 f"to '{bc.BOLD}{self.to_branch.name}{bc.END}' "
                 f"against {bc.BOLD}{self.upstream_org}/{self.repo_name}{bc.END}?"
                 ):
-            response = misc._request_github(
+            response = github.request(
                 f"repos/{self.upstream_org}/{self.repo_name}/pulls",
                 method="post",
                 json=pr_data
@@ -373,13 +377,16 @@ class PortAddonPullRequest():
 class BranchesDiff():
     """Helper to compare easily commits (and related PRs) between two branches."""
     def __init__(
-            self, repo, upstream_org, repo_name, path, from_branch, to_branch, storage
+            self, repo, upstream_org, repo_name, path,
+            from_branch, to_branch, storage, cache
             ):
         self.repo = repo
         self.upstream_org = upstream_org
         self.repo_name = repo_name
         self.path = path
         self.from_branch, self.to_branch = from_branch, to_branch
+        self.storage = storage
+        self.cache = cache
         self.from_branch_path_commits, _ = self._get_branch_commits(
             self.from_branch.ref(), path
         )
@@ -390,7 +397,6 @@ class BranchesDiff():
             self.to_branch.ref(), self.path
         )
         self.to_branch_all_commits, _ = self._get_branch_commits(self.to_branch.ref())
-        self.storage = storage
         self.commits_diff = self.get_commits_diff()
 
     def _get_branch_commits(self, branch, path="."):
@@ -408,7 +414,9 @@ class BranchesDiff():
         commits_list = []
         commits_by_sha = {}
         for commit in commits:
-            com = misc.Commit(commit)
+            if self.cache.is_commit_ported(commit.hexsha):
+                continue
+            com = g.Commit(commit)
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
@@ -504,103 +512,82 @@ class BranchesDiff():
         :return: a dict {PullRequest: {Commit: data, ...}, ...}
         """
         commits_by_pr = defaultdict(list)
-        # Fake PR for commits w/o related PR
-        fake_pr = misc.PullRequest(*[""] * 6, tuple(), tuple())
         for commit in self.from_branch_path_commits:
             if commit in self.to_branch_all_commits:
+                self.cache.mark_commit_as_ported(commit.hexsha)
                 continue
             # Get related Pull Request if any
-            if any("github.com" in remote.url for remote in self.repo.remotes):
-                gh_commit_pulls = misc._request_github(
-                    f"repos/{self.upstream_org}/{self.repo_name}"
-                    f"/commits/{commit.hexsha}/pulls"
-                )
-                full_repo_name = f"{self.upstream_org}/{self.repo_name}"
-                gh_commit_pull = [
-                    data for data in gh_commit_pulls
-                    if data["base"]["repo"]["full_name"] == full_repo_name
-                ]
-                if gh_commit_pull:
-                    pr = self._new_pull_request_from_github_data(gh_commit_pull[0])
-                    # Get all commits of the related PR as they could update
-                    # others addons than the one the user is interested in
-                    # NOTE: commits fetched from PR are already in the right order
-                    gh_pr_commits = misc._request_github(
-                        f"repos/{self.upstream_org}/{self.repo_name}"
-                        f"/pulls/{pr.number}/commits"
+            pr = self._get_original_pr(commit)
+            if pr:
+                for pr_commit_sha in pr.commits:
+                    try:
+                        raw_commit = self.repo.commit(pr_commit_sha)
+                    except ValueError:
+                        # Ignore commits referenced by a PR but not present
+                        # in the stable branches
+                        continue
+                    pr_commit = g.Commit(raw_commit)
+                    if self._skip_commit(pr_commit):
+                        continue
+                    pr_commit_paths = set(
+                        path for path in pr_commit.paths
+                        if not path_to_skip(path)
                     )
-                    for gh_pr_commit in gh_pr_commits:
-                        try:
-                            raw_commit = self.repo.commit(gh_pr_commit["sha"])
-                        except ValueError:
-                            # Ignore commits referenced by a PR but not present
-                            # in the stable branches
+                    pr.paths.update(pr_commit_paths)
+                    # Check that this PR commit does not change the current
+                    # addon we are interested in, in such case also check
+                    # for each updated addons that the commit has already
+                    # been ported.
+                    # Indeed a commit could have been ported partially
+                    # in the past (with git-format-patch), and we now want
+                    # to port the remaining chunks.
+                    if pr_commit not in self.to_branch_path_commits:
+                        paths = set(pr_commit_paths)
+                        # A commit could have been ported several times
+                        # if it was impacting several addons and the
+                        # migration has been done with git-format-patch
+                        # on each addon separately
+                        to_branch_all_commits = self.to_branch_all_commits[:]
+                        skip_pr_commit = False
+                        with g.no_strict_commit_equality():
+                            while pr_commit in to_branch_all_commits:
+                                index = to_branch_all_commits.index(pr_commit)
+                                ported_commit = to_branch_all_commits.pop(index)
+                                ported_commit_paths = set(
+                                    path for path in ported_commit.paths
+                                    if not path_to_skip(path)
+                                )
+                                pr.ported_paths.update(ported_commit_paths)
+                                pr_commit.ported_commits.append(ported_commit)
+                                paths -= ported_commit_paths
+                                if not paths:
+                                    # The ported commits have already updated
+                                    # the same addons than the original one,
+                                    # we can skip it.
+                                    skip_pr_commit = True
+                        if skip_pr_commit:
                             continue
-                        pr_commit = misc.Commit(raw_commit)
-                        if self._skip_commit(pr_commit):
-                            continue
-                        pr_commit_paths = set(
-                            path for path in pr_commit.paths
-                            if not path_to_skip(path)
-                        )
-                        pr.paths.update(pr_commit_paths)
-                        # Check that this PR commit does not change the current
-                        # addon we are interested in, in such case also check
-                        # for each updated addons that the commit has already
-                        # been ported.
-                        # Indeed a commit could have been ported partially
-                        # in the past (with git-format-patch), and we now want
-                        # to port the remaining chunks.
-                        if pr_commit not in self.to_branch_path_commits:
-                            paths = set(pr_commit_paths)
-                            # A commit could have been ported several times
-                            # if it was impacting several addons and the
-                            # migration has been done with git-format-patch
-                            # on each addon separately
-                            to_branch_all_commits = self.to_branch_all_commits[:]
-                            skip_pr_commit = False
-                            with misc.no_strict_commit_equality():
-                                while pr_commit in to_branch_all_commits:
-                                    index = to_branch_all_commits.index(pr_commit)
-                                    ported_commit = to_branch_all_commits.pop(index)
-                                    ported_commit_paths = set(
-                                        path for path in ported_commit.paths
-                                        if not path_to_skip(path)
-                                    )
-                                    pr.ported_paths.update(ported_commit_paths)
-                                    pr_commit.ported_commits.append(ported_commit)
-                                    paths -= ported_commit_paths
-                                    if not paths:
-                                        # The ported commits have already updated
-                                        # the same addons than the original one,
-                                        # we can skip it.
-                                        skip_pr_commit = True
-                            if skip_pr_commit:
-                                continue
-                        # We want to port commits that were still not ported
-                        # for the addon we are interested in.
-                        # If the commit has already been included, skip it.
+                    # We want to port commits that were still not ported
+                    # for the addon we are interested in.
+                    # If the commit has already been included, skip it.
+                    if (
+                            pr_commit in self.to_branch_path_commits
+                            and pr_commit in self.to_branch_all_commits
+                    ):
+                        continue
+                    existing_pr_commits = commits_by_pr.get(pr, [])
+                    for existing_pr_commit in existing_pr_commits:
                         if (
-                                pr_commit in self.to_branch_path_commits
-                                and pr_commit in self.to_branch_all_commits
+                            existing_pr_commit == pr_commit and
+                            existing_pr_commit.hexsha == pr_commit.hexsha
                         ):
-                            continue
-                        existing_pr_commits = commits_by_pr.get(pr, [])
-                        for existing_pr_commit in existing_pr_commits:
-                            if (
-                                existing_pr_commit == pr_commit and
-                                existing_pr_commit.hexsha == pr_commit.hexsha
-                            ):
-                                # This PR commit has already been appended, skip
-                                break
-                        else:
-                            commits_by_pr[pr].append(pr_commit)
-                # No related PR: add the commit to the fake PR
-                else:
-                    commits_by_pr[fake_pr].append(commit)
+                            # This PR commit has already been appended, skip
+                            break
+                    else:
+                        commits_by_pr[pr].append(pr_commit)
+            # No related PR: add the commit to the fake PR
             else:
-                # FIXME log?
-                pass
+                commits_by_pr[FAKE_PR].append(commit)
         # Sort PRs on the merge date (better to port them in the right order).
         # Do not return blacklisted PR.
         sorted_commits_by_pr = {}
@@ -616,22 +603,37 @@ class BranchesDiff():
             sorted_commits_by_pr[pr] = commits_by_pr[pr]
         return sorted_commits_by_pr
 
-    @staticmethod
-    def _new_pull_request_from_github_data(data, paths=None, ported_paths=None):
-        """Create a new PullRequest instance from GitHub data."""
-        pr_number = data["number"]
-        pr_url = data["html_url"]
-        pr_author = data["user"].get("login", "")
-        pr_title = data["title"]
-        pr_body = data["body"]
-        pr_merge_at = data["merged_at"]
-        return misc.PullRequest(
-            number=pr_number,
-            url=pr_url,
-            author=pr_author,
-            title=pr_title,
-            body=pr_body,
-            merged_at=pr_merge_at,
-            paths=paths,
-            ported_paths=ported_paths,
+    def _get_original_pr(self, commit: g.Commit):
+        """Return the original PR of a given commit."""
+        # Try to get the data from the user's cache first
+        data = self.cache.get_pr_from_commit(commit.hexsha)
+        if data:
+            return g.PullRequest(**data)
+        # Request GitHub to get them
+        if not any("github.com" in remote.url for remote in self.repo.remotes):
+            return
+        raw_data = github.get_original_pr(
+            self.upstream_org, self.repo_name,
+            self.from_branch.name, commit.hexsha
         )
+        if raw_data:
+            # Get all commits of the PR as they could update others addons
+            # than the one the user is interested in.
+            # NOTE: commits fetched from PR are already in the right order
+            pr_number = raw_data["number"]
+            pr_commits_data = github.request(
+                f"repos/{self.upstream_org}/{self.repo_name}"
+                f"/pulls/{pr_number}/commits?per_page=100"
+            )
+            pr_commits = [pr["sha"] for pr in pr_commits_data]
+            data = {
+                "number": raw_data["number"],
+                "url": raw_data["html_url"],
+                "author": raw_data["user"].get("login", ""),
+                "title": raw_data["title"],
+                "body": raw_data["body"],
+                "merged_at": raw_data["merged_at"],
+                "commits": pr_commits,
+            }
+            self.cache.store_commit_pr(commit.hexsha, data)
+            return g.PullRequest(**data)

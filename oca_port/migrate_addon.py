@@ -6,8 +6,8 @@ import os
 import tempfile
 import urllib.parse
 
-from . import misc
-from .misc import bcolors as bc
+from .utils import misc, git as g
+from .utils.misc import bcolors as bc
 from .port_addon_pr import PortAddonPullRequest
 
 MIG_BRANCH_NAME = (
@@ -61,7 +61,8 @@ BLACKLIST_TIPS = "\n".join([
 class MigrateAddon():
     def __init__(
             self, repo, upstream_org, repo_name, from_branch, to_branch,
-            fork, user_org, addon, storage, verbose=False, non_interactive=False
+            fork, user_org, addon, storage, cache=None, verbose=False,
+            non_interactive=False
             ):
         self.repo = repo
         self.upstream_org = upstream_org
@@ -72,7 +73,8 @@ class MigrateAddon():
         self.user_org = user_org
         self.addon = addon
         self.storage = storage
-        self.mig_branch = misc.Branch(
+        self.cache = cache
+        self.mig_branch = g.Branch(
             repo, MIG_BRANCH_NAME.format(branch=to_branch.name[:4], addon=addon)
         )
         self.verbose = verbose
@@ -114,13 +116,13 @@ class MigrateAddon():
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
-            misc.run_pre_commit(self.repo, self.addon)
+            g.run_pre_commit(self.repo, self.addon)
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(
             self.repo, self.upstream_org, self.repo_name,
             self.from_branch, self.mig_branch, self.fork, self.user_org,
-            self.addon, self.storage, self.verbose,
+            self.addon, self.storage, self.cache, self.verbose,
             create_branch=False, push_branch=False
         ).run()
         self._print_tips()

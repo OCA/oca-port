@@ -43,8 +43,8 @@ import os
 import click
 import git
 
-from . import misc
-from .misc import bcolors as bc
+from . import utils
+from .utils.misc import bcolors as bc
 from .migrate_addon import MigrateAddon
 from .port_addon_pr import PortAddonPullRequest
 
@@ -65,9 +65,11 @@ from .port_addon_pr import PortAddonPullRequest
               help="List the commits of Pull Requests.")
 @click.option("--non-interactive", is_flag=True,
               help="Disable all interactive prompts.")
+@click.option("--no-cache", is_flag=True, help="Disable user's cache.")
+@click.option("--clear-cache", is_flag=True, help="Clear the user's cache.")
 def main(
         from_branch, to_branch, addon, upstream_org, upstream, repo_name,
-        fork, user_org, verbose, non_interactive
+        fork, user_org, verbose, non_interactive, no_cache, clear_cache
         ):
     """Migrate ADDON from FROM_BRANCH to TO_BRANCH or list Pull Requests to port
     if ADDON already exists on TO_BRANCH.
@@ -101,27 +103,32 @@ order to push the resulting branch on the user's remote.
             raise click.ClickException(error_msg)
     try:
         # Parse source and target branches
-        from_branch = misc.Branch(repo, from_branch, default_remote=upstream)
-        to_branch = misc.Branch(repo, to_branch, default_remote=upstream)
+        from_branch = utils.git.Branch(repo, from_branch, default_remote=upstream)
+        to_branch = utils.git.Branch(repo, to_branch, default_remote=upstream)
     except ValueError as exc:
         _check_remote(repo_name, *exc.args)
     _fetch_branches(from_branch, to_branch, verbose=verbose)
     _check_branches(from_branch, to_branch)
     _check_addon_exists(addon, from_branch, raise_exc=True)
-    storage = misc.InputStorage(to_branch, addon)
+    storage = utils.storage.InputStorage(to_branch, addon)
+    cache = utils.cache.UserCacheFactory(
+        upstream_org, repo_name, addon, from_branch, to_branch, no_cache
+    ).build()
     # Check if the addon (folder) exists on the target branch
     #   - if it already exists, check if some PRs could be ported
     if _check_addon_exists(addon, to_branch):
         PortAddonPullRequest(
             repo, upstream_org, repo_name, from_branch, to_branch,
-            fork, user_org, addon, storage, verbose, non_interactive
+            fork, user_org, addon, storage, cache, verbose, non_interactive
         ).run()
     #   - if not, migrate it
     else:
         MigrateAddon(
             repo, upstream_org, repo_name, from_branch, to_branch,
-            fork, user_org, addon, storage, verbose, non_interactive
+            fork, user_org, addon, storage, cache, verbose, non_interactive
         ).run()
+    if clear_cache:
+        cache.clear()
 
 
 def _check_remote(repo_name, repo, remote, raise_exc=True):
