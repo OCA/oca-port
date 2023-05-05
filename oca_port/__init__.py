@@ -66,9 +66,10 @@ from .port_addon_pr import PortAddonPullRequest
 @click.option("--non-interactive", is_flag=True,
               help="Disable all interactive prompts.")
 @click.option("--no-cache", is_flag=True, help="Disable user's cache.")
+@click.option("--clear-cache", is_flag=True, help="Clear the user's cache.")
 def main(
         from_branch, to_branch, addon, upstream_org, upstream, repo_name,
-        fork, user_org, verbose, non_interactive, no_cache
+        fork, user_org, verbose, non_interactive, no_cache, clear_cache
         ):
     """Migrate ADDON from FROM_BRANCH to TO_BRANCH or list Pull Requests to port
     if ADDON already exists on TO_BRANCH.
@@ -126,6 +127,8 @@ order to push the resulting branch on the user's remote.
             repo, upstream_org, repo_name, from_branch, to_branch,
             fork, user_org, addon, storage, cache, verbose, non_interactive
         ).run()
+    if clear_cache:
+        cache.clear()
 
 
 def _check_remote(repo_name, repo, remote, raise_exc=True):

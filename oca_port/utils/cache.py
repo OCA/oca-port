@@ -5,6 +5,7 @@ from collections import defaultdict
 import json
 import logging
 import pathlib
+import shutil
 import os
 
 from . import git as g, misc
@@ -70,6 +71,10 @@ class NoCache():
     def get_pr_from_commit(self, commit_sha: str):
         # No PR data to return
         return {}
+
+    def clear(self):
+        # Do nothing
+        pass
 
 
 class UserCache():
@@ -182,3 +187,8 @@ class UserCache():
         if pr_number:
             return self._commits_to_port["pull_requests"][str(pr_number)]
         return {}
+
+    def clear(self):
+        """Clear the cache by removing the content of the cache directory."""
+        if self._cache_dirname and str(self.dir_path).endswith(self._cache_dirname):
+            shutil.rmtree(self.dir_path)
