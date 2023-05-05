@@ -5,7 +5,6 @@ import os
 
 import requests
 
-
 GITHUB_API_URL = "https://api.github.com"
 
 
@@ -33,7 +32,8 @@ def get_original_pr(upstream_org: str, repo_name: str, branch: str, commit_sha: 
         f"repos/{upstream_org}/{repo_name}/commits/{commit_sha}/pulls"
     )
     gh_commit_pull = [
-        data for data in gh_commit_pulls
+        data
+        for data in gh_commit_pulls
         if (
             data["base"]["ref"] == branch
             and data["base"]["repo"]["full_name"] == f"{upstream_org}/{repo_name}"

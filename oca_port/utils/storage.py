@@ -1,16 +1,16 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
-from collections import defaultdict
 import json
 import os
+from collections import defaultdict
 
 import click
 
 from . import git as g, misc
 
 
-class InputStorage():
+class InputStorage:
     """Store the user inputs related to an addon.
 
     If commits/pull requests of an addon may be ported, some of them could be
@@ -33,6 +33,7 @@ class InputStorage():
           }
         }
     """
+
     storage_dirname = ".oca/oca-port"
 
     def __init__(self, to_branch, addon):
@@ -52,7 +53,7 @@ class InputStorage():
         try:
             # Read the JSON file from 'to_branch'
             tree = self.repo.commit(self.to_branch.ref()).tree
-            blob = tree/self.storage_dirname/"blacklist"/f"{self.addon}.json"
+            blob = tree / self.storage_dirname / "blacklist" / f"{self.addon}.json"
             content = blob.data_stream.read().decode()
             return json.loads(content, object_hook=misc.defaultdict_from_dict)
         except KeyError:

@@ -44,47 +44,67 @@ import click
 import git
 
 from . import utils
-from .utils.misc import bcolors as bc
 from .migrate_addon import MigrateAddon
 from .port_addon_pr import PortAddonPullRequest
+from .utils.misc import bcolors as bc
 
 
 @click.command()
 @click.argument("from_branch", required=True)
 @click.argument("to_branch", required=True)
 @click.argument("addon", required=True)
-@click.option("--upstream-org", default="OCA", show_default=True,
-              help="Upstream organization name.")
-@click.option("--upstream", default="origin", show_default=True, required=True,
-              help="Git remote from which source and target branches are fetched by default.")
+@click.option(
+    "--upstream-org",
+    default="OCA",
+    show_default=True,
+    help="Upstream organization name.",
+)
+@click.option(
+    "--upstream",
+    default="origin",
+    show_default=True,
+    required=True,
+    help="Git remote from which source and target branches are fetched by default.",
+)
 @click.option("--repo-name", help="Repository name, eg. server-tools.")
-@click.option("--fork",
-              help="Git remote where branches with ported commits are pushed.")
+@click.option(
+    "--fork", help="Git remote where branches with ported commits are pushed."
+)
 @click.option("--user-org", show_default="--fork", help="User organization name.")
-@click.option("--verbose", is_flag=True,
-              help="List the commits of Pull Requests.")
-@click.option("--non-interactive", is_flag=True,
-              help="Disable all interactive prompts.")
+@click.option("--verbose", is_flag=True, help="List the commits of Pull Requests.")
+@click.option(
+    "--non-interactive", is_flag=True, help="Disable all interactive prompts."
+)
 @click.option("--no-cache", is_flag=True, help="Disable user's cache.")
 @click.option("--clear-cache", is_flag=True, help="Clear the user's cache.")
 def main(
-        from_branch, to_branch, addon, upstream_org, upstream, repo_name,
-        fork, user_org, verbose, non_interactive, no_cache, clear_cache
-        ):
+    from_branch,
+    to_branch,
+    addon,
+    upstream_org,
+    upstream,
+    repo_name,
+    fork,
+    user_org,
+    verbose,
+    non_interactive,
+    no_cache,
+    clear_cache,
+):
     """Migrate ADDON from FROM_BRANCH to TO_BRANCH or list Pull Requests to port
-    if ADDON already exists on TO_BRANCH.
+        if ADDON already exists on TO_BRANCH.
 
-    Migration:
+        Migration:
 
-        Assist the user in the migration of the addon, following the OCA guidelines.
+            Assist the user in the migration of the addon, following the OCA guidelines.
 
-    Port of Pull Requests (missing commits):
+        Port of Pull Requests (missing commits):
 
-        The PRs are found from FROM_BRANCH commits that do not exist in TO_BRANCH.
-The user will be asked if he wants to port them.
+            The PRs are found from FROM_BRANCH commits that do not exist in TO_BRANCH.
+    The user will be asked if he wants to port them.
 
-    To start the migration process, the `--fork` option must be provided in
-order to push the resulting branch on the user's remote.
+        To start the migration process, the `--fork` option must be provided in
+    order to push the resulting branch on the user's remote.
     """
     repo = git.Repo()
     if repo.is_dirty(untracked_files=True):
@@ -118,14 +138,34 @@ order to push the resulting branch on the user's remote.
     #   - if it already exists, check if some PRs could be ported
     if _check_addon_exists(addon, to_branch):
         PortAddonPullRequest(
-            repo, upstream_org, repo_name, from_branch, to_branch,
-            fork, user_org, addon, storage, cache, verbose, non_interactive
+            repo,
+            upstream_org,
+            repo_name,
+            from_branch,
+            to_branch,
+            fork,
+            user_org,
+            addon,
+            storage,
+            cache,
+            verbose,
+            non_interactive,
         ).run()
     #   - if not, migrate it
     else:
         MigrateAddon(
-            repo, upstream_org, repo_name, from_branch, to_branch,
-            fork, user_org, addon, storage, cache, verbose, non_interactive
+            repo,
+            upstream_org,
+            repo_name,
+            from_branch,
+            to_branch,
+            fork,
+            user_org,
+            addon,
+            storage,
+            cache,
+            verbose,
+            non_interactive,
         ).run()
     if clear_cache:
         cache.clear()
@@ -157,9 +197,7 @@ def _fetch_branches(*branches, verbose=False):
             continue
         remote_url = branch.repo.remotes[branch.remote].url
         if verbose:
-            print(
-                f"Fetch {bc.BOLD}{branch.ref()}{bc.END} from {remote_url}"
-            )
+            print(f"Fetch {bc.BOLD}{branch.ref()}{bc.END} from {remote_url}")
         branch.repo.remotes[branch.remote].fetch(branch.name)
 
 
@@ -168,8 +206,7 @@ def _check_branches(from_branch, to_branch):
     # Check if the source branch exists (required)
     if not from_branch.remote:
         raise click.ClickException(
-            "No source branch "
-            f"{bc.BOLD}{from_branch.ref()}{bc.END} available."
+            f"No source branch {bc.BOLD}{from_branch.ref()}{bc.END} available."
         )
     # Check if the target branch exists (with or w/o remote, allowing to work
     # on a local one)
@@ -193,5 +230,5 @@ def _check_addon_exists(addon, branch, raise_exc=False):
     return True
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

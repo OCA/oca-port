@@ -1,9 +1,9 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
-from collections import defaultdict
-import re
 import os
+import re
+from collections import defaultdict
 
 MANIFEST_NAMES = ("__manifest__.py", "__openerp__.py")
 
@@ -19,7 +19,7 @@ def get_manifest_path(addon_dir):
 class bcolors:
     HEADER = "\033[95m"
     OKBLUE = "\033[94m"
-    OKCYAN = '\033[96m'
+    OKCYAN = "\033[96m"
     OKGREEN = "\033[92m"
     WARNING = "\033[93m"
     FAIL = "\033[91m"
@@ -37,7 +37,7 @@ def clean_text(text):
 
 
 def defaultdict_from_dict(d):
-    nd = lambda: defaultdict(nd)    # noqa
+    nd = lambda: defaultdict(nd)  # noqa
     ni = nd()
     ni.update(d)
     return ni

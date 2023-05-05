@@ -1,3 +1,5 @@
+[![Pre-commit Status](https://github.com/OCA/oca-port/actions/workflows/pre-commit.yml/badge.svg?branch=main)](https://github.com/OCA/oca-port/actions/workflows/pre-commit.yml?query=branch%3Amain)
+
 oca-port
 ========
 
@@ -12,7 +14,7 @@ Installing
     $ git clone git@github.com:oca/oca-port.git
     $ cd oca-port
     $ pipx install .
-    
+
 Using
 -----
 

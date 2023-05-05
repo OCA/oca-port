@@ -1,25 +1,30 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
-from collections import defaultdict
 import json
 import logging
+import os
 import pathlib
 import shutil
-import os
+from collections import defaultdict
 
 from . import git as g, misc
-
 
 _logger = logging.getLogger(__name__)
 
 
-class UserCacheFactory():
+class UserCacheFactory:
     """User's cache manager factory."""
+
     def __init__(
-            self, upstream_org: str, repo_name: str, addon:str ,
-            from_branch: g.Branch, to_branch: g.Branch, no_cache: bool
-        ):
+        self,
+        upstream_org: str,
+        repo_name: str,
+        addon: str,
+        from_branch: g.Branch,
+        to_branch: g.Branch,
+        no_cache: bool,
+    ):
         self._upstream_org = upstream_org
         self._repo_name = repo_name
         self._addon = addon
@@ -33,28 +38,32 @@ class UserCacheFactory():
             return NoCache()
         try:
             cache = UserCache(
-                self._upstream_org, self._repo_name, self._addon,
-                self._from_branch, self._to_branch
+                self._upstream_org,
+                self._repo_name,
+                self._addon,
+                self._from_branch,
+                self._to_branch,
             )
-        except:
+        except Exception:
             # If the cache can't be used (whatever the reason) we fallback on a
             # fake-cache manager.
             _logger.warning(
-                "No cache will be used: unable to initialize the cache folder in %s.",
-                UserCache._get_dir_path()
+                "No cache will be used: "
+                "unable to initialize the cache folder in %s.",
+                UserCache._get_dir_path(),
             )
             cache = NoCache()
         return cache
 
 
-class NoCache():
+class NoCache:
     """Fake cache manager class.
 
     Used if the cache can't be used, e.g. no write access to cache folder.
     """
-    def __init__(*args, **kwargs):
+
+    def __init__(self, *args, **kwargs):
         """Initialize a fake user's cache manager."""
-        pass
 
     def mark_commit_as_ported(self, commit_sha):
         # Do nothing
@@ -77,7 +86,7 @@ class NoCache():
         pass
 
 
-class UserCache():
+class UserCache:
     """Manage the user's cache, in respect to XDG conventions.
 
     This class manages the following data:
@@ -85,14 +94,19 @@ class UserCache():
 
     It allows to speed up further commit scans on a given module.
     """
+
     _cache_dirname = "oca-port"
     _ported_dirname = "ported"
     _to_port_dirname = "to_port"
 
     def __init__(
-            self, upstream_org: str, repo_name: str, addon: str,
-            from_branch: g.Branch, to_branch: g.Branch
-        ):
+        self,
+        upstream_org: str,
+        repo_name: str,
+        addon: str,
+        from_branch: g.Branch,
+        to_branch: g.Branch,
+    ):
         """Initialize user's cache manager."""
         self._upstream_org = upstream_org
         self._repo_name = repo_name
@@ -110,34 +124,25 @@ class UserCache():
         """Return the path of the cache directory."""
         default_cache_dir_path = pathlib.Path.home().joinpath(".cache")
         return pathlib.Path(
-            os.environ.get('XDG_CACHE_HOME', default_cache_dir_path),
-            cls._cache_dirname
+            os.environ.get("XDG_CACHE_HOME", default_cache_dir_path), cls._cache_dirname
         )
 
     def _get_ported_commits_path(self):
         """Return the file path storing ported commit."""
         file_name = (
-            f"{self._addon}_{self._from_branch.name}_"
-            f"to_{self._to_branch.name}.list"
+            f"{self._addon}_{self._from_branch.name}_" f"to_{self._to_branch.name}.list"
         )
         return self.dir_path.joinpath(
-            self._ported_dirname,
-            self._upstream_org,
-            self._repo_name,
-            file_name
+            self._ported_dirname, self._upstream_org, self._repo_name, file_name
         )
 
     def _get_commits_to_port_path(self):
         """Return the file path storing cached data of commits to port."""
         file_name = (
-            f"{self._addon}_{self._from_branch.name}_"
-            f"to_{self._to_branch.name}.json"
+            f"{self._addon}_{self._from_branch.name}_" f"to_{self._to_branch.name}.json"
         )
         return self.dir_path.joinpath(
-            self._to_port_dirname,
-            self._upstream_org,
-            self._repo_name,
-            file_name
+            self._to_port_dirname, self._upstream_org, self._repo_name, file_name
         )
 
     def _get_ported_commits(self):
@@ -178,7 +183,7 @@ class UserCache():
         try:
             with self._commits_to_port_path.open(mode="w") as file_:
                 json.dump(self._commits_to_port, file_, indent=2)
-        except:
+        except Exception:
             pass
 
     def get_pr_from_commit(self, commit_sha: str):

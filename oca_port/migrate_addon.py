@@ -1,18 +1,17 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
-import click
 import os
 import tempfile
 import urllib.parse
 
-from .utils import misc, git as g
-from .utils.misc import bcolors as bc
-from .port_addon_pr import PortAddonPullRequest
+import click
 
-MIG_BRANCH_NAME = (
-    "{branch}-mig-{addon}"
-)
+from .port_addon_pr import PortAddonPullRequest
+from .utils import git as g
+from .utils.misc import bcolors as bc
+
+MIG_BRANCH_NAME = "{branch}-mig-{addon}"
 MIG_MERGE_COMMITS_URL = (
     "https://github.com/OCA/maintainer-tools/wiki/Merge-commits-in-pull-requests"
 )
@@ -25,45 +24,56 @@ MIG_NEW_PR_URL = (
     "https://github.com/{upstream_org}/{repo_name}/compare/"
     "{to_branch}...{user_org}:{mig_branch}?expand=1&title={title}"
 )
-MIG_TIPS = "\n".join([
-    f"\n{bc.BOLD}{bc.OKCYAN}The next steps are:{bc.END}",
-    (
-        "\t1) Reduce the number of commits "
-        f"('{bc.DIM}OCA Transbot...{bc.END}'):"
-    ),
-    f"\t\t=> {bc.BOLD}{MIG_MERGE_COMMITS_URL}{bc.END}",
-    "\t2) Adapt the module to the {to_branch} version:",
-    f"\t\t=> {bc.BOLD}" "{mig_tasks_url}" f"{bc.END}",
-    (
-        "\t3) On a shell command, type this for uploading the content to GitHub:\n"
-        f"{bc.DIM}"
-        "\t\t$ git add --all\n"
-        "\t\t$ git commit -m \"[MIG] {addon}: Migration to {to_branch}\"\n"
-        "\t\t$ git push {fork} {mig_branch} --set-upstream"
-        f"{bc.END}"
-    ),
-    "\t4) Create the PR against {upstream_org}/{repo_name}:",
-    f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
-])
-BLACKLIST_TIPS = "\n".join([
-    f"\n{bc.BOLD}{bc.OKCYAN}The next steps are:{bc.END}",
-    (
-        "\t1) On a shell command, type this for uploading the content to GitHub:\n"
-        f"{bc.DIM}"
-        "\t\t$ git push {fork} {mig_branch} --set-upstream"
-        f"{bc.END}"
-    ),
-    "\t2) Create the PR against {upstream_org}/{repo_name}:",
-    f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
-])
+MIG_TIPS = "\n".join(
+    [
+        f"\n{bc.BOLD}{bc.OKCYAN}The next steps are:{bc.END}",
+        ("\t1) Reduce the number of commits " f"('{bc.DIM}OCA Transbot...{bc.END}'):"),
+        f"\t\t=> {bc.BOLD}{MIG_MERGE_COMMITS_URL}{bc.END}",
+        "\t2) Adapt the module to the {to_branch} version:",
+        f"\t\t=> {bc.BOLD}" "{mig_tasks_url}" f"{bc.END}",
+        (
+            "\t3) On a shell command, type this for uploading the content to GitHub:\n"
+            f"{bc.DIM}"
+            "\t\t$ git add --all\n"
+            '\t\t$ git commit -m "[MIG] {addon}: Migration to {to_branch}"\n'
+            "\t\t$ git push {fork} {mig_branch} --set-upstream"
+            f"{bc.END}"
+        ),
+        "\t4) Create the PR against {upstream_org}/{repo_name}:",
+        f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
+    ]
+)
+BLACKLIST_TIPS = "\n".join(
+    [
+        f"\n{bc.BOLD}{bc.OKCYAN}The next steps are:{bc.END}",
+        (
+            "\t1) On a shell command, type this for uploading the content to GitHub:\n"
+            f"{bc.DIM}"
+            "\t\t$ git push {fork} {mig_branch} --set-upstream"
+            f"{bc.END}"
+        ),
+        "\t2) Create the PR against {upstream_org}/{repo_name}:",
+        f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
+    ]
+)
 
 
-class MigrateAddon():
+class MigrateAddon:
     def __init__(
-            self, repo, upstream_org, repo_name, from_branch, to_branch,
-            fork, user_org, addon, storage, cache=None, verbose=False,
-            non_interactive=False
-            ):
+        self,
+        repo,
+        upstream_org,
+        repo_name,
+        from_branch,
+        to_branch,
+        fork,
+        user_org,
+        addon,
+        storage,
+        cache=None,
+        verbose=False,
+        non_interactive=False,
+    ):
         self.repo = repo
         self.upstream_org = upstream_org
         self.repo_name = repo_name
@@ -86,7 +96,8 @@ class MigrateAddon():
             print(
                 f"{bc.DIM}Migration of {bc.BOLD}{self.addon}{bc.END} "
                 f"{bc.DIM}to {self.to_branch.name} "
-                f"blacklisted ({blacklisted}){bc.ENDD}")
+                f"blacklisted ({blacklisted}){bc.ENDD}"
+            )
             return
         if self.non_interactive:
             # Exit with an error code if the addon is eligible for a migration
@@ -120,10 +131,19 @@ class MigrateAddon():
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(
-            self.repo, self.upstream_org, self.repo_name,
-            self.from_branch, self.mig_branch, self.fork, self.user_org,
-            self.addon, self.storage, self.cache, self.verbose,
-            create_branch=False, push_branch=False
+            self.repo,
+            self.upstream_org,
+            self.repo_name,
+            self.from_branch,
+            self.mig_branch,
+            self.fork,
+            self.user_org,
+            self.addon,
+            self.storage,
+            self.cache,
+            self.verbose,
+            create_branch=False,
+            push_branch=False,
         ).run()
         self._print_tips()
 
@@ -161,9 +181,12 @@ class MigrateAddon():
     def _generate_patches(self, patches_dir):
         print("\tGenerate patches...")
         self.repo.git.format_patch(
-            "--keep-subject", "-o", patches_dir,
+            "--keep-subject",
+            "-o",
+            patches_dir,
             f"{self.to_branch.ref()}..{self.from_branch.ref()}",
-            "--", self.addon
+            "--",
+            self.addon,
         )
 
     def _apply_patches(self, patches_dir):
@@ -184,22 +207,31 @@ class MigrateAddon():
             MIG_NEW_PR_TITLE.format(to_branch=self.to_branch.name[:4], addon=self.addon)
         )
         new_pr_url = MIG_NEW_PR_URL.format(
-            upstream_org=self.upstream_org, repo_name=self.repo_name,
-            to_branch=self.to_branch.name, user_org=self.user_org,
-            mig_branch=self.mig_branch.name, title=pr_title_encoded
+            upstream_org=self.upstream_org,
+            repo_name=self.repo_name,
+            to_branch=self.to_branch.name,
+            user_org=self.user_org,
+            mig_branch=self.mig_branch.name,
+            title=pr_title_encoded,
         )
         if blacklisted:
             tips = BLACKLIST_TIPS.format(
-                upstream_org=self.upstream_org, repo_name=self.repo_name,
-                fork=self.fork, mig_branch=self.mig_branch.name,
-                new_pr_url=new_pr_url
+                upstream_org=self.upstream_org,
+                repo_name=self.repo_name,
+                fork=self.fork,
+                mig_branch=self.mig_branch.name,
+                new_pr_url=new_pr_url,
             )
             print(tips)
             return
         tips = MIG_TIPS.format(
-            upstream_org=self.upstream_org, repo_name=self.repo_name,
-            addon=self.addon, to_branch=self.to_branch.name, fork=self.fork,
-            mig_branch=self.mig_branch.name, mig_tasks_url=mig_tasks_url,
-            new_pr_url=new_pr_url
+            upstream_org=self.upstream_org,
+            repo_name=self.repo_name,
+            addon=self.addon,
+            to_branch=self.to_branch.name,
+            fork=self.fork,
+            mig_branch=self.mig_branch.name,
+            mig_tasks_url=mig_tasks_url,
+            new_pr_url=new_pr_url,
         )
         print(tips)
