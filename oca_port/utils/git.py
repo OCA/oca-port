@@ -1,10 +1,10 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
-from collections import abc
 import contextlib
 import re
 import subprocess
+from collections import abc
 
 import git as g
 
@@ -14,7 +14,7 @@ from .misc import bcolors as bc
 PO_FILE_REGEX = re.compile(r".*i18n/.+\.pot?$")
 
 
-class Branch():
+class Branch:
     def __init__(self, repo, name, default_remote=None, check_remote=True):
         self.repo = repo
         if len(name.split("/", 1)) > 1:
@@ -37,6 +37,7 @@ class Branch():
 
 class CommitPath(str):
     """Helper class to know if a base path is a directory or a file."""
+
     def __new__(cls, value):
         new_value = value.split("/", maxsplit=1)[0]
         obj = super().__new__(cls, new_value)
@@ -44,7 +45,7 @@ class CommitPath(str):
         return obj
 
 
-class Commit():
+class Commit:
     # Attributes used to check equality between commits.
     # We do not want to use the SHA here as it changed from one branch to another
     # when a commit is ported (obviously).
@@ -54,9 +55,7 @@ class Commit():
         "authored_datetime",
         "message",
     )
-    other_equality_attrs = (
-        "paths",
-    )
+    other_equality_attrs = ("paths",)
     eq_strict = True
 
     def __init__(self, commit):
@@ -77,14 +76,11 @@ class Commit():
         self.ported_commits = []
 
     def _get_equality_attrs(self):
-        return (
-            [attr for attr in self.base_equality_attrs if hasattr(self, attr)]
-            +
-            [
-                attr for attr in self.other_equality_attrs
-                if self.__class__.eq_strict and hasattr(self, attr)
-            ]
-        )
+        return [attr for attr in self.base_equality_attrs if hasattr(self, attr)] + [
+            attr
+            for attr in self.other_equality_attrs
+            if self.__class__.eq_strict and hasattr(self, attr)
+        ]
 
     def _lazy_eq_message(self, other):
         """Compare commit messages."""
@@ -130,9 +126,9 @@ class Commit():
         addons = set()
         for diff in self.diffs:
             if (
-                    any(manifest in diff.b_path for manifest in misc.MANIFEST_NAMES)
-                    and diff.change_type == "A"
-                    ):
+                any(manifest in diff.b_path for manifest in misc.MANIFEST_NAMES)
+                and diff.change_type == "A"
+            ):
                 addons.add(diff.b_path.split("/", maxsplit=1)[0])
         return addons
 
@@ -140,11 +136,13 @@ class Commit():
     def paths_to_port(self):
         """Return the list of file paths to port."""
         current_paths = {
-            diff.a_path for diff in self.diffs
+            diff.a_path
+            for diff in self.diffs
             if self._keep_diff_path(diff, diff.a_path)
         }.union(
             {
-                diff.b_path for diff in self.diffs
+                diff.b_path
+                for diff in self.diffs
                 if self._keep_diff_path(diff, diff.b_path)
             }
         )
@@ -185,9 +183,17 @@ class PullRequest(abc.Hashable):
     eq_attrs = ("number", "url", "author", "title", "body", "merged_at")
 
     def __init__(
-            self, number, url, author, title, body, merged_at, commits=None,
-            paths=None, ported_paths=None
-            ):
+        self,
+        number,
+        url,
+        author,
+        title,
+        body,
+        merged_at,
+        commits=None,
+        paths=None,
+        ported_paths=None,
+    ):
         self.number = number
         self.url = url
         self.author = author
@@ -219,9 +225,7 @@ class PullRequest(abc.Hashable):
 
 def run_pre_commit(repo, addon, commit=True, hook=None):
     # Run pre-commit
-    print(
-        f"\tRun {bc.BOLD}pre-commit{bc.END} and commit changes if any..."
-    )
+    print(f"\tRun {bc.BOLD}pre-commit{bc.END} and commit changes if any...")
     # First ensure that 'pre-commit' is initialized for the repository,
     # then run it (without checking the return code on purpose)
     subprocess.check_call("pre-commit install", shell=True)

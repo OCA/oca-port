@@ -12,7 +12,7 @@ Installing
     $ git clone git@github.com:oca/oca-port.git
     $ cd oca-port
     $ pipx install .
-    
+
 Using
 -----
 
