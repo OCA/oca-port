@@ -8,7 +8,7 @@ import pathlib
 import shutil
 from collections import defaultdict
 
-from . import git as g, misc
+from . import misc
 
 _logger = logging.getLogger(__name__)
 
@@ -16,34 +16,15 @@ _logger = logging.getLogger(__name__)
 class UserCacheFactory:
     """User's cache manager factory."""
 
-    def __init__(
-        self,
-        upstream_org: str,
-        repo_name: str,
-        addon: str,
-        from_branch: g.Branch,
-        to_branch: g.Branch,
-        no_cache: bool,
-    ):
-        self._upstream_org = upstream_org
-        self._repo_name = repo_name
-        self._addon = addon
-        self._from_branch = from_branch
-        self._to_branch = to_branch
-        self._no_cache = no_cache
+    def __init__(self, app):
+        self.app = app
 
     def build(self):
         """Build the cache manager."""
-        if self._no_cache:
+        if self.app.no_cache:
             return NoCache()
         try:
-            cache = UserCache(
-                self._upstream_org,
-                self._repo_name,
-                self._addon,
-                self._from_branch,
-                self._to_branch,
-            )
+            cache = UserCache(self.app)
         except Exception:
             # If the cache can't be used (whatever the reason) we fallback on a
             # fake-cache manager.
@@ -99,20 +80,9 @@ class UserCache:
     _ported_dirname = "ported"
     _to_port_dirname = "to_port"
 
-    def __init__(
-        self,
-        upstream_org: str,
-        repo_name: str,
-        addon: str,
-        from_branch: g.Branch,
-        to_branch: g.Branch,
-    ):
+    def __init__(self, app):
         """Initialize user's cache manager."""
-        self._upstream_org = upstream_org
-        self._repo_name = repo_name
-        self._addon = addon
-        self._from_branch = from_branch
-        self._to_branch = to_branch
+        self.app = app
         self.dir_path = self._get_dir_path()
         self._ported_commits_path = self._get_ported_commits_path()
         self._ported_commits = self._get_ported_commits()
@@ -130,19 +100,27 @@ class UserCache:
     def _get_ported_commits_path(self):
         """Return the file path storing ported commit."""
         file_name = (
-            f"{self._addon}_{self._from_branch.name}_" f"to_{self._to_branch.name}.list"
+            f"{self.app.addon}_{self.app.from_branch.name}_"
+            f"to_{self.app.to_branch.name}.list"
         )
         return self.dir_path.joinpath(
-            self._ported_dirname, self._upstream_org, self._repo_name, file_name
+            self._ported_dirname,
+            self.app.upstream_org,
+            self.app.repo_name,
+            file_name,
         )
 
     def _get_commits_to_port_path(self):
         """Return the file path storing cached data of commits to port."""
         file_name = (
-            f"{self._addon}_{self._from_branch.name}_" f"to_{self._to_branch.name}.json"
+            f"{self.app.addon}_{self.app.from_branch.name}_"
+            f"to_{self.app.to_branch.name}.json"
         )
         return self.dir_path.joinpath(
-            self._to_port_dirname, self._upstream_org, self._repo_name, file_name
+            self._to_port_dirname,
+            self.app.upstream_org,
+            self.app.repo_name,
+            file_name,
         )
 
     def _get_ported_commits(self):
