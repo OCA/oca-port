@@ -26,7 +26,7 @@ SUMMARY_TERMS_TO_SKIP = [
     "Added translation using Weblate",
 ]
 
-PR_BRANCH_NAME = "oca-port-pr-{pr_number}-from-{from_branch}-to-{to_branch}"
+PR_BRANCH_NAME = "oca-port-from-{from_branch}-to-{to_branch}-pr-{pr_number}"
 
 FOLDERS_TO_SKIP = [
     "setup",
@@ -203,9 +203,9 @@ class PortAddonPullRequest:
         # Create a local branch based on upstream
         if self.create_branch:
             branch_name = PR_BRANCH_NAME.format(
-                pr_number=pr.number,
                 from_branch=self.from_branch.name,
                 to_branch=self.to_branch.name,
+                pr_number=pr.number,
             )
             if branch_name in self.repo.heads:
                 # If the local branch already exists, ask the user if he wants
@@ -228,6 +228,9 @@ class PortAddonPullRequest:
             ):
                 base_ref = previous_pr_branch
                 based_on_previous = True
+                # Set the new branch name the same than the previous one
+                # but with the PR number as suffix.
+                branch_name = f"{previous_pr_branch.name}-{pr.number}"
             print(
                 f"\tCreate branch {bc.BOLD}{branch_name}{bc.END} from {base_ref.ref()}..."
             )
