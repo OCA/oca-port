@@ -222,6 +222,21 @@ class PullRequest(abc.Hashable):
     def paths_not_ported(self):
         return list(self.paths - self.ported_paths)
 
+    def to_dict(self, number=False, body=False, commits=False):
+        data = {
+            "url": self.url,
+            "author": self.author,
+            "title": self.title,
+            "merged_at": str(self.merged_at),
+        }
+        if number:
+            data["number"] = self.number
+        if body:
+            data["body"] = self.body
+        if commits:
+            data["commits"] = [c.hexsha for c in self.commits]
+        return data
+
 
 def run_pre_commit(repo, addon, commit=True, hook=None):
     # Run pre-commit

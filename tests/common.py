@@ -74,7 +74,8 @@ class CommonCase(unittest.TestCase):
             manifest.seek(0)
             manifest.write(content)
         repo.index.add(self.manifest_path)
-        repo.index.commit(f"[FIX] {self._settings['addon']}: fix dependency")
+        commit = repo.index.commit(f"[FIX] {self._settings['addon']}: fix dependency")
+        return commit.hexsha
 
     def tearDown(self):
         # Clean up the Git repository

@@ -61,6 +61,7 @@ BLACKLIST_TIPS = "\n".join(
 class MigrateAddon(Output):
     def __init__(self, app):
         self.app = app
+        self._results = {"process": "migrate", "results": None}
         self.mig_branch = g.Branch(
             self.app.repo,
             MIG_BRANCH_NAME.format(
@@ -76,12 +77,18 @@ class MigrateAddon(Output):
                 f"{bc.DIM}to {self.app.to_branch.name} "
                 f"blacklisted ({blacklisted}){bc.ENDD}"
             )
-            return
+            return False
         if self.app.non_interactive:
-            # Exit with an error code if the addon is eligible for a migration
-            # User-defined exit codes should be defined between 64 and 113.
-            # Allocate 105 for 'PortAddonPullRequest'.
-            raise SystemExit(100)
+            # If an output is defined we return the result in the expected format
+            if self.app.output:
+                self._results["results"] = {}
+                return self._render_output(self.app.output, self._results)
+            if self.app.cli:
+                # Exit with an error code if the addon is eligible for a migration
+                # User-defined exit codes should be defined between 64 and 113.
+                # Allocate 105 for 'PortAddonPullRequest'.
+                raise SystemExit(100)
+            return True
         confirm = (
             f"Migrate {bc.BOLD}{self.app.addon}{bc.END} "
             f"from {bc.BOLD}{self.app.from_branch.name}{bc.END} "
@@ -90,7 +97,7 @@ class MigrateAddon(Output):
         if not click.confirm(confirm):
             self.app.storage.blacklist_addon(confirm=True)
             if not self.app.storage.dirty:
-                return
+                return False
         # Check if a migration PR already exists
         # TODO
         if not self.app.fork:
@@ -103,7 +110,7 @@ class MigrateAddon(Output):
             if self.app.storage.dirty:
                 self.app.storage.commit()
                 self._print_tips(blacklisted=True)
-                return
+                return False
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
@@ -112,6 +119,7 @@ class MigrateAddon(Output):
         # make it work properly
         PortAddonPullRequest(self.app, create_branch=False, push_branch=False).run()
         self._print_tips()
+        return True
 
     def _checkout_base_branch(self):
         # Ensure to not start to work from a working branch

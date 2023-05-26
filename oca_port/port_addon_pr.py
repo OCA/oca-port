@@ -59,6 +59,7 @@ class PortAddonPullRequest(Output):
         self.app = app
         self.create_branch = create_branch
         self.push_branch = push_branch
+        self._results = {"process": "port_commits", "results": {}}
 
     def run(self):
         self._print(
@@ -70,14 +71,24 @@ class PortAddonPullRequest(Output):
         branches_diff.print_diff(self.app.verbose)
         if self.app.non_interactive:
             if branches_diff.commits_diff:
-                # Exit with an error code if commits are eligible for (back)porting
-                # User-defined exit codes should be defined between 64 and 113.
-                # Allocate 110 for 'PortAddonPullRequest'.
-                raise SystemExit(110)
-            return
+                # If an output is defined we return the result in the expected format
+                if self.app.output:
+                    self._results["results"] = branches_diff.serialized_diff
+                    return self._render_output(self.app.output, self._results)
+                if self.app.cli:
+                    # Exit with an error code if commits are eligible for (back)porting
+                    # User-defined exit codes should be defined between 64 and 113.
+                    # Allocate 110 for 'PortAddonPullRequest'.
+                    raise SystemExit(110)
+                return True
+            if self.app.output:
+                # Nothing to port -> return an empty output
+                return self._render_output(self.app.output, {})
+            return False
         if self.app.fork:
             self._print()
             self._port_pull_requests(branches_diff)
+        return True
 
     def _port_pull_requests(self, branches_diff):
         """Open new Pull Requests (if it doesn't exist) on the GitHub repository."""
@@ -399,6 +410,14 @@ class BranchesDiff(Output):
             self.app.to_branch.ref()
         )
         self.commits_diff = self.get_commits_diff()
+        self.serialized_diff = self._serialize_diff(self.commits_diff)
+
+    def _serialize_diff(self, commits_diff):
+        data = {}
+        for pr, commits in commits_diff.items():
+            data[pr.number] = pr.to_dict()
+            data[pr.number]["missing_commits"] = [commit.hexsha for commit in commits]
+        return data
 
     def _get_branch_commits(self, branch, path="."):
         """Get commits from the local repository for the given `branch`.

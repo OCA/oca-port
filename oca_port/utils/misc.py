@@ -1,6 +1,7 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
+import json
 import os
 import re
 from collections import defaultdict
@@ -51,5 +52,13 @@ class Output:
         app = self
         if hasattr(self, "app"):
             app = self.app
-        if app.cli:
+        if app.cli and not app.output:
             print(*args, **kwargs)
+
+    def _render_output(self, output, data):
+        """Render the data with the expected format."""
+        return getattr(self, f"_render_output_{output}")(data)
+
+    def _render_output_json(self, data):
+        """Render the data as JSON."""
+        return json.dumps(data)
