@@ -9,7 +9,7 @@ import click
 
 from .port_addon_pr import PortAddonPullRequest
 from .utils import git as g
-from .utils.misc import bcolors as bc
+from .utils.misc import Output, bcolors as bc
 
 MIG_BRANCH_NAME = "{branch}-mig-{addon}"
 MIG_MERGE_COMMITS_URL = (
@@ -58,7 +58,7 @@ BLACKLIST_TIPS = "\n".join(
 )
 
 
-class MigrateAddon:
+class MigrateAddon(Output):
     def __init__(self, app):
         self.app = app
         self.mig_branch = g.Branch(
@@ -71,7 +71,7 @@ class MigrateAddon:
     def run(self):
         blacklisted = self.app.storage.is_addon_blacklisted()
         if blacklisted:
-            print(
+            self._print(
                 f"{bc.DIM}Migration of {bc.BOLD}{self.app.addon}{bc.END} "
                 f"{bc.DIM}to {self.app.to_branch.name} "
                 f"blacklisted ({blacklisted}){bc.ENDD}"

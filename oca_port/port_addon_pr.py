@@ -10,7 +10,7 @@ import click
 import git
 
 from .utils import git as g, github, misc
-from .utils.misc import bcolors as bc
+from .utils.misc import Output, bcolors as bc
 
 AUTHOR_EMAILS_TO_SKIP = [
     "transbot@odoo-community.org",
@@ -53,7 +53,7 @@ def path_to_skip(commit_path):
     return commit_path not in FILES_TO_KEEP
 
 
-class PortAddonPullRequest:
+class PortAddonPullRequest(Output):
     def __init__(self, app, create_branch=True, push_branch=True):
         """Port pull requests of an addon."""
         self.app = app
@@ -61,7 +61,7 @@ class PortAddonPullRequest:
         self.push_branch = push_branch
 
     def run(self):
-        print(
+        self._print(
             f"{bc.BOLD}{self.app.addon}{bc.END} already exists "
             f"on {bc.BOLD}{self.app.to_branch.name}{bc.END}, "
             "checking PRs to port..."
@@ -76,7 +76,7 @@ class PortAddonPullRequest:
                 raise SystemExit(110)
             return
         if self.app.fork:
-            print()
+            self._print()
             self._port_pull_requests(branches_diff)
 
     def _port_pull_requests(self, branches_diff):
@@ -102,7 +102,7 @@ class PortAddonPullRequest:
                 # Check if commits have been ported.
                 # If none has been ported, blacklist automatically the current PR.
                 if self.app.repo.commit(pr_branch.ref()) == current_commit:
-                    print("\tℹ️  Nothing has been ported, skipping")
+                    self._print("\tℹ️  Nothing has been ported, skipping")
                     self.app.storage.blacklist_pr(
                         pr.number,
                         confirm=True,
@@ -115,7 +115,7 @@ class PortAddonPullRequest:
                         if pr.number
                         else "Orphaned commits have been"
                     ) + f" automatically blacklisted{bc.ENDD}"
-                    print(msg)
+                    self._print(msg)
                     continue
                 previous_pr = pr
                 previous_pr_branch = pr_branch
@@ -124,16 +124,14 @@ class PortAddonPullRequest:
                 else:
                     processed_prs = [pr]
                 if pr == last_pr:
-                    print("\t🎉 Last PR processed! 🎉")
-                if not self.push_branch:
-                    continue
+                    self._print("\t🎉 Last PR processed! 🎉")
                 is_pushed = self._push_branch_to_remote(pr_branch)
                 if not is_pushed:
                     continue
                 pr_data = self._prepare_pull_request_data(processed_prs, pr_branch)
                 pr_url = self._search_pull_request(pr_data["base"], pr_data["title"])
                 if pr_url:
-                    print(f"\tExisting PR has been refreshed => {pr_url}")
+                    self._print(f"\tExisting PR has been refreshed => {pr_url}")
                 else:
                     self._create_pull_request(pr_branch, pr_data, processed_prs)
 
@@ -147,12 +145,12 @@ class PortAddonPullRequest:
     ):
         """Port commits of a Pull Request in a new branch."""
         if pr.number:
-            print(
+            self._print(
                 f"- {bc.BOLD}{bc.OKCYAN}Port PR #{pr.number}{bc.END} "
                 f"({pr.url}) {bc.OKCYAN}{pr.title}{bc.ENDC}..."
             )
         else:
-            print(f"- {bc.BOLD}{bc.OKCYAN}Port commits w/o PR{bc.END}...")
+            self._print(f"- {bc.BOLD}{bc.OKCYAN}Port commits w/o PR{bc.END}...")
         based_on_previous = False
         # Ensure to not start to work from a working branch
         if self.app.to_branch.name in self.app.repo.heads:
@@ -200,7 +198,7 @@ class PortAddonPullRequest:
                 # Set the new branch name the same than the previous one
                 # but with the PR number as suffix.
                 branch_name = f"{previous_pr_branch.name}-{pr.number}"
-            print(
+            self._print(
                 f"\tCreate branch {bc.BOLD}{branch_name}{bc.END} from {base_ref.ref()}..."
             )
             self.app.repo.git.checkout("--no-track", "-b", branch_name, base_ref.ref())
@@ -213,7 +211,7 @@ class PortAddonPullRequest:
 
         # Cherry-pick commits of the source PR
         for commit in commits:
-            print(
+            self._print(
                 f"\t\tApply {bc.OKCYAN}{commit.hexsha[:8]}{bc.ENDC} "
                 f"{commit.summary}..."
             )
@@ -223,14 +221,14 @@ class PortAddonPullRequest:
                 skip, message = self._skip_diff(commit, diff)
                 if skip:
                     if message:
-                        print(f"\t\t\t{message}")
+                        self._print(f"\t\t\t{message}")
                     if diff.a_path in paths_to_port:
                         paths_to_port.remove(diff.a_path)
                     if diff.b_path in paths_to_port:
                         paths_to_port.remove(diff.b_path)
                     continue
             if not paths_to_port:
-                print("\t\t\tℹ️  Nothing to port from this commit, skipping")
+                self._print("\t\t\tℹ️  Nothing to port from this commit, skipping")
                 continue
             try:
                 patches_dir = tempfile.mkdtemp()
@@ -250,7 +248,7 @@ class PortAddonPullRequest:
                 self.app.repo.git.am("-3", "--keep", *patches)
                 shutil.rmtree(patches_dir)
             except git.exc.GitCommandError as exc:
-                print(f"{bc.FAIL}ERROR:{bc.ENDC}\n{exc}\n")
+                self._print(f"{bc.FAIL}ERROR:{bc.ENDC}\n{exc}\n")
                 # High chance a conflict occurs, ask the user to resolve it
                 if not click.confirm(
                     "⚠️  A conflict occurs, please resolve it and "
@@ -303,6 +301,8 @@ class PortAddonPullRequest:
 
     def _push_branch_to_remote(self, branch):
         """Force push the local branch to remote fork."""
+        if not self.push_branch:
+            return False
         confirm = (
             f"\tPush branch '{bc.BOLD}{branch.name}{bc.END}' "
             f"to remote '{bc.BOLD}{self.app.fork}{bc.END}'?"
@@ -311,6 +311,7 @@ class PortAddonPullRequest:
             branch.repo.git.push(self.app.fork, branch.name, "--force-with-lease")
             branch.remote = self.app.fork
             return True
+        return False
 
     def _prepare_pull_request_data(self, processed_prs, pr_branch):
         if len(processed_prs) > 1:
@@ -356,7 +357,7 @@ class PortAddonPullRequest:
 
     def _create_pull_request(self, pr_branch, pr_data, processed_prs):
         if len(processed_prs) > 1:
-            print(
+            self._print(
                 "\tPR(s) ported locally:",
                 ", ".join(
                     [f"{bc.OKCYAN}#{pr.number}{bc.ENDC}" for pr in processed_prs]
@@ -373,13 +374,13 @@ class PortAddonPullRequest:
                 json=pr_data,
             )
             pr_url = response["html_url"]
-            print(
+            self._print(
                 f"\t\t{bc.BOLD}{bc.OKCYAN}PR created =>" f"{bc.ENDC} {pr_url}{bc.END}"
             )
             return pr_url
 
 
-class BranchesDiff:
+class BranchesDiff(Output):
     """Helper to compare easily commits (and related PRs) between two branches."""
 
     def __init__(self, app):
@@ -491,7 +492,7 @@ class BranchesDiff:
                 f"{self.app.from_branch.ref()} to {self.app.to_branch.ref()}"
             )
         lines_to_print.insert(0, message)
-        print("\n".join(lines_to_print))
+        self._print("\n".join(lines_to_print))
 
     def get_commits_diff(self):
         """Returns the commits which do not exist in `to_branch`, grouped by
@@ -585,7 +586,7 @@ class BranchesDiff:
                 msg = (
                     f"{bc.DIM}PR #{pr.number}" if pr.number else "Orphaned commits"
                 ) + f" blacklisted ({blacklisted}){bc.ENDD}"
-                print(msg)
+                self._print(msg)
                 continue
             sorted_commits_by_pr[pr] = commits_by_pr[pr]
         return sorted_commits_by_pr
