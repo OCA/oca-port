@@ -79,7 +79,9 @@ class MigrateAddon:
             return
         if self.app.non_interactive:
             # Exit with an error code if the addon is eligible for a migration
-            raise SystemExit(1)
+            # User-defined exit codes should be defined between 64 and 113.
+            # Allocate 105 for 'PortAddonPullRequest'.
+            raise SystemExit(100)
         confirm = (
             f"Migrate {bc.BOLD}{self.app.addon}{bc.END} "
             f"from {bc.BOLD}{self.app.from_branch.name}{bc.END} "

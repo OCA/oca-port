@@ -191,7 +191,8 @@ class App:
             returns more details to the user
         non_interactive:
             flag to not wait for user input and to return a error code to the shell.
-            Returns 1 if something can be ported, 0 otherwise.
+            Returns 100 if an addon could be migrated, 110 if pull requests/commits
+            could be ported, 0 if the history of the addon is the same on both branches.
         no_cache:
             flag to disable the user's cache
         clear_cache:

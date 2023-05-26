@@ -71,7 +71,9 @@ class PortAddonPullRequest:
         if self.app.non_interactive:
             if branches_diff.commits_diff:
                 # Exit with an error code if commits are eligible for (back)porting
-                raise SystemExit(1)
+                # User-defined exit codes should be defined between 64 and 113.
+                # Allocate 110 for 'PortAddonPullRequest'.
+                raise SystemExit(110)
             return
         if self.app.fork:
             print()
