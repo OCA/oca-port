@@ -1,0 +1,24 @@
+name: tests
+
+on: [pull_request, push]
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pip install .[test]
+          sudo apt install -y git
+          git config --global user.email "oca-port@example.com"
+          git config --global user.name "oca-port-test"
+      - name: Run tests
+        run: pytest tests

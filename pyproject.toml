@@ -29,6 +29,11 @@ repository = "https://github.com/OCA/oca-port"
 [project.scripts]
 oca-port = "oca_port:main"
 
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+
 [build-system]
 requires = ["setuptools>=64", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
