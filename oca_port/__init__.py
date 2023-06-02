@@ -87,6 +87,7 @@ from .exceptions import ForkValueError, RemoteBranchValueError
         "Possibles values are: 'json'."
     ),
 )
+@click.option("--fetch", is_flag=True, help="Fetch remote branches from upstream.")
 @click.option("--no-cache", is_flag=True, help="Disable user's cache.")
 @click.option("--clear-cache", is_flag=True, help="Clear the user's cache.")
 def main(
@@ -101,6 +102,7 @@ def main(
     verbose: bool,
     non_interactive: bool,
     output: str,
+    fetch: bool,
     no_cache: bool,
     clear_cache: bool,
 ):
@@ -133,6 +135,7 @@ def main(
             verbose=verbose,
             non_interactive=non_interactive,
             output=output,
+            fetch=fetch,
             no_cache=no_cache,
             clear_cache=clear_cache,
             cli=True,
@@ -208,6 +211,8 @@ class App(Output):
             returns a parsable output. This implies the 'non-interactive' mode
             defined above but without returning any special exit code.
             Possible values: 'json'
+        fetch:
+            always fetch source and target branches from upstream
         no_cache:
             flag to disable the user's cache
         clear_cache:
@@ -226,6 +231,7 @@ class App(Output):
     verbose: bool = False
     non_interactive: bool = False
     output: str = None
+    fetch: bool = False
     no_cache: bool = False
     clear_cache: bool = False
     cli: bool = False  # Not documented, should not be used outside of the CLI
@@ -276,8 +282,13 @@ class App(Output):
         # NOTE: required for the storage below to retrieve data
         remote_branches = self.repo.git.branch("-r").split()
         if (
-            self.from_branch.remote and self.from_branch.ref() not in remote_branches
-        ) or (self.to_branch.remote and self.to_branch.ref() not in remote_branches):
+            self.fetch
+            or (
+                self.from_branch.remote
+                and self.from_branch.ref() not in remote_branches
+            )
+            or (self.to_branch.remote and self.to_branch.ref() not in remote_branches)
+        ):
             self.fetch_branches()
         # Initialize storage & cache
         self.storage = utils.storage.InputStorage(self.to_branch, self.addon)
@@ -315,7 +326,6 @@ class App(Output):
 
     def run(self):
         """Run 'oca-port' to migrate an addon or to port its pull requests."""
-        self.fetch_branches()
         self.check_addon_exists_from_branch(raise_exc=True)
         # Check if some PRs could be ported
         output = self.run_port()
