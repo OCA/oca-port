@@ -189,7 +189,7 @@ class PullRequest(abc.Hashable):
         author,
         title,
         body,
-        merged_at,
+        merged_at=None,
         commits=None,
         paths=None,
         ported_paths=None,
@@ -227,7 +227,7 @@ class PullRequest(abc.Hashable):
             "url": self.url,
             "author": self.author,
             "title": self.title,
-            "merged_at": str(self.merged_at),
+            "merged_at": str(self.merged_at or ""),
         }
         if number:
             data["number"] = self.number

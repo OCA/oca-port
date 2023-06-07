@@ -15,7 +15,7 @@ class CommonCase(unittest.TestCase):
         "branch2": "16.0",
         "branch3": "17.0",
         "addon": "my_module",
-        "upstream_org": "OCA",
+        "upstream_org": None,
         "upstream": None,  # We're testing locally without any remote
         "user_org": "OCA-test",
         "no_cache": True,

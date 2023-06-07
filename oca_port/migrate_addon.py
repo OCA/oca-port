@@ -8,7 +8,7 @@ import urllib.parse
 import click
 
 from .port_addon_pr import PortAddonPullRequest
-from .utils import git as g
+from .utils import git as g, github
 from .utils.misc import Output, bcolors as bc
 
 MIG_BRANCH_NAME = "{branch}-mig-{addon}"
@@ -61,7 +61,7 @@ BLACKLIST_TIPS = "\n".join(
 class MigrateAddon(Output):
     def __init__(self, app):
         self.app = app
-        self._results = {"process": "migrate", "results": None}
+        self._results = {"process": "migrate", "results": {}}
         self.mig_branch = g.Branch(
             self.app.repo,
             MIG_BRANCH_NAME.format(
@@ -78,10 +78,27 @@ class MigrateAddon(Output):
                 f"blacklisted ({blacklisted}){bc.ENDD}"
             )
             return False
+        # Looking for an existing PR to review
+        existing_pr = None
+        if self.app.upstream_org and self.app.repo_name:
+            existing_pr = github.search_migration_pr(
+                upstream_org=self.app.upstream_org,
+                repo_name=self.app.repo_name,
+                branch=self.app.to_branch.name,
+                addon=self.app.addon,
+            )
+        if existing_pr:
+            self._print(
+                f"⚠️\tMigration of {bc.BOLD}{self.app.addon}{bc.END} "
+                f"seems handled in this PR:\n"
+                f"\t\t{bc.BOLD}{existing_pr.url}{bc.END} (by {existing_pr.author})\n"
+                "\tWe invite you to review this PR instead of opening a new one. "
+                "Thank you!"
+            )
+            self._results["results"]["existing_pr"] = existing_pr.to_dict(number=True)
         if self.app.non_interactive:
             # If an output is defined we return the result in the expected format
             if self.app.output:
-                self._results["results"] = {}
                 return self._render_output(self.app.output, self._results)
             if self.app.cli:
                 # Exit with an error code if the addon is eligible for a migration

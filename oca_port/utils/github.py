@@ -5,6 +5,8 @@ import os
 
 import requests
 
+from .git import PullRequest
+
 GITHUB_API_URL = "https://api.github.com"
 
 
@@ -40,3 +42,25 @@ def get_original_pr(upstream_org: str, repo_name: str, branch: str, commit_sha: 
         )
     ]
     return gh_commit_pull and gh_commit_pull[0] or {}
+
+
+def search_migration_pr(upstream_org: str, repo_name: str, branch: str, addon: str):
+    """Return an existing migration PR (if any) of `addon` for `branch`."""
+    # NOTE: If the module we are looking for is named 'a_b' and the PR title is
+    # written 'a b', we won't get any result, but that's better than returning
+    # the wrong PR to the user.
+    repo = f"{upstream_org}/{repo_name}"
+    prs = request(
+        f"search/issues?q=is:pr+is:open+repo:{repo}+base:{branch}+in:title++mig+{addon}"
+    )
+    for pr in prs.get("items", {}):
+        # Searching for 'a' on GitHub could return a result containing 'a_b'
+        # so we check the result for the exact module name to return a relevant PR.
+        if any(addon == term for term in pr["title"].split()):
+            return PullRequest(
+                number=pr["number"],
+                url=pr["html_url"],
+                author=pr["user"]["login"],
+                title=pr["title"],
+                body=pr["body"],
+            )
