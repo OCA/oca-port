@@ -28,28 +28,28 @@ def request(url, method="get", params=None, json=None):
     return response.json()
 
 
-def get_original_pr(upstream_org: str, repo_name: str, branch: str, commit_sha: str):
+def get_original_pr(from_org: str, repo_name: str, branch: str, commit_sha: str):
     """Return original GitHub PR data of a commit."""
     gh_commit_pulls = request(
-        f"repos/{upstream_org}/{repo_name}/commits/{commit_sha}/pulls"
+        f"repos/{from_org}/{repo_name}/commits/{commit_sha}/pulls"
     )
     gh_commit_pull = [
         data
         for data in gh_commit_pulls
         if (
             data["base"]["ref"] == branch
-            and data["base"]["repo"]["full_name"] == f"{upstream_org}/{repo_name}"
+            and data["base"]["repo"]["full_name"] == f"{from_org}/{repo_name}"
         )
     ]
     return gh_commit_pull and gh_commit_pull[0] or {}
 
 
-def search_migration_pr(upstream_org: str, repo_name: str, branch: str, addon: str):
+def search_migration_pr(from_org: str, repo_name: str, branch: str, addon: str):
     """Return an existing migration PR (if any) of `addon` for `branch`."""
     # NOTE: If the module we are looking for is named 'a_b' and the PR title is
     # written 'a b', we won't get any result, but that's better than returning
     # the wrong PR to the user.
-    repo = f"{upstream_org}/{repo_name}"
+    repo = f"{from_org}/{repo_name}"
     prs = request(
         f"search/issues?q=is:pr+is:open+repo:{repo}+base:{branch}+in:title++mig+{addon}"
     )

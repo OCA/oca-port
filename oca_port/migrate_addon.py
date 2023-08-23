@@ -21,7 +21,7 @@ MIG_TASKS_URL = (
 )
 MIG_NEW_PR_TITLE = "[{to_branch}][MIG] {addon}"
 MIG_NEW_PR_URL = (
-    "https://github.com/{upstream_org}/{repo_name}/compare/"
+    "https://github.com/{from_org}/{repo_name}/compare/"
     "{to_branch}...{user_org}:{mig_branch}?expand=1&title={title}"
 )
 MIG_TIPS = "\n".join(
@@ -39,7 +39,7 @@ MIG_TIPS = "\n".join(
             "\t\t$ git push {fork} {mig_branch} --set-upstream"
             f"{bc.END}"
         ),
-        "\t4) Create the PR against {upstream_org}/{repo_name}:",
+        "\t4) Create the PR against {from_org}/{repo_name}:",
         f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
     ]
 )
@@ -52,7 +52,7 @@ BLACKLIST_TIPS = "\n".join(
             "\t\t$ git push {fork} {mig_branch} --set-upstream"
             f"{bc.END}"
         ),
-        "\t2) Create the PR against {upstream_org}/{repo_name}:",
+        "\t2) Create the PR against {from_org}/{repo_name}:",
         f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
     ]
 )
@@ -80,9 +80,9 @@ class MigrateAddon(Output):
             return False
         # Looking for an existing PR to review
         existing_pr = None
-        if self.app.upstream_org and self.app.repo_name:
+        if self.app.from_org and self.app.repo_name:
             existing_pr = github.search_migration_pr(
-                upstream_org=self.app.upstream_org,
+                from_org=self.app.from_org,
                 repo_name=self.app.repo_name,
                 branch=self.app.to_branch.name,
                 addon=self.app.addon,
@@ -203,7 +203,7 @@ class MigrateAddon(Output):
             )
         )
         new_pr_url = MIG_NEW_PR_URL.format(
-            upstream_org=self.app.upstream_org,
+            from_org=self.app.from_org,
             repo_name=self.app.repo_name,
             to_branch=self.app.to_branch.name,
             user_org=self.app.user_org,
@@ -212,7 +212,7 @@ class MigrateAddon(Output):
         )
         if blacklisted:
             tips = BLACKLIST_TIPS.format(
-                upstream_org=self.app.upstream_org,
+                from_org=self.app.from_org,
                 repo_name=self.app.repo_name,
                 fork=self.app.fork,
                 mig_branch=self.mig_branch.name,
@@ -221,7 +221,7 @@ class MigrateAddon(Output):
             print(tips)
             return
         tips = MIG_TIPS.format(
-            upstream_org=self.app.upstream_org,
+            from_org=self.app.from_org,
             repo_name=self.app.repo_name,
             addon=self.app.addon,
             to_branch=self.app.to_branch.name,
