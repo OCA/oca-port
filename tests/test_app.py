@@ -1,6 +1,6 @@
 import json
 
-import oca_port
+from oca_port.app import App
 
 from . import common
 
@@ -20,7 +20,7 @@ class TestApp(common.CommonCase):
         }
         params.update(kwargs)
         # NOTE: app will run in non-interactive mode
-        return oca_port.App(**params)
+        return App(**params)
 
     def test_app_nothing_to_port(self):
         app = self._create_app(self._settings["branch1"], self._settings["branch2"])
