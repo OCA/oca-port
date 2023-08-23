@@ -1,6 +1,7 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
+import json
 import os
 import re
 from collections import defaultdict
@@ -41,3 +42,23 @@ def defaultdict_from_dict(d):
     ni = nd()
     ni.update(d)
     return ni
+
+
+class Output:
+    """Mixin to handle the output of oca-port."""
+
+    def _print(self, *args, **kwargs):
+        """Like built-in 'print' method but check if oca-port is used in CLI."""
+        app = self
+        if hasattr(self, "app"):
+            app = self.app
+        if app.cli and not app.output:
+            print(*args, **kwargs)
+
+    def _render_output(self, output, data):
+        """Render the data with the expected format."""
+        return getattr(self, f"_render_output_{output}")(data)
+
+    def _render_output_json(self, data):
+        """Render the data as JSON."""
+        return json.dumps(data)
