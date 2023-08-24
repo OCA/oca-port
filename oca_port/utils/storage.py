@@ -102,7 +102,7 @@ class InputStorage:
         self._data["no_migration"] = reason or "Unknown"
         self.dirty = True
 
-    def commit(self):
+    def commit(self, msg=None):
         """Commit all files contained in the storage directory."""
         if not self.save():
             return
@@ -123,5 +123,5 @@ class InputStorage:
         self.repo.index.add(self.storage_dirname)
         if self.repo.is_dirty():
             g.run_pre_commit(self.repo, self.addon, commit=False, hook="prettier")
-            self.repo.index.commit(f"oca-port: store '{self.addon}' data")
+            self.repo.index.commit(msg or f"oca-port: store '{self.addon}' data")
             self.dirty = False
