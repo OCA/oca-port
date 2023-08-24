@@ -32,6 +32,7 @@ oca-port = "oca_port.cli.main:main"
 [project.optional-dependencies]
 test = [
   "pytest",
+  "coverage",
 ]
 
 [build-system]
