@@ -42,9 +42,9 @@ import os
 
 import click
 
-from .app import App
-from .exceptions import ForkValueError, RemoteBranchValueError
-from .utils.misc import bcolors as bc
+from ..app import App
+from ..exceptions import ForkValueError, RemoteBranchValueError
+from ..utils.misc import bcolors as bc
 
 
 @click.command()
