@@ -9,7 +9,7 @@ from collections import abc
 import git as g
 
 from . import misc
-from .misc import bcolors as bc
+from .misc import bcolors as bc, pr_ref_from_url
 
 PO_FILE_REGEX = re.compile(r".*i18n/.+\.pot?$")
 
@@ -196,6 +196,7 @@ class PullRequest(abc.Hashable):
     ):
         self.number = number
         self.url = url
+        self.ref = pr_ref_from_url(url)
         self.author = author
         self.title = title
         self.body = body
@@ -225,6 +226,7 @@ class PullRequest(abc.Hashable):
     def to_dict(self, number=False, body=False, commits=False):
         data = {
             "url": self.url,
+            "ref": self.ref,
             "author": self.author,
             "title": self.title,
             "merged_at": str(self.merged_at or ""),

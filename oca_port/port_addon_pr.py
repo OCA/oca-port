@@ -175,7 +175,7 @@ class PortAddonPullRequest(Output):
             )
         # Ask the user if he wants to port the PR (or orphaned commits)
         if not click.confirm("\tPort it?" if pr.number else "\tPort them?"):
-            self.app.storage.blacklist_pr(pr.number, confirm=True)
+            self.app.storage.blacklist_pr(pr.ref, confirm=True)
             if not self.app.storage.dirty:
                 return None, based_on_previous
         # Create a local branch based on upstream
@@ -600,7 +600,10 @@ class BranchesDiff(Output):
         # Do not return blacklisted PR.
         sorted_commits_by_pr = {}
         for pr in sorted(commits_by_pr, key=lambda pr: pr.merged_at or ""):
-            blacklisted = self.app.storage.is_pr_blacklisted(pr.number)
+            blacklisted = self.app.storage.is_pr_blacklisted(pr.ref)
+            if not blacklisted:
+                # TODO: Backward compat for old tracking only by number
+                blacklisted = self.app.storage.is_pr_blacklisted(pr.number)
             if blacklisted:
                 msg = (
                     f"{bc.DIM}PR #{pr.number}" if pr.number else "Orphaned commits"

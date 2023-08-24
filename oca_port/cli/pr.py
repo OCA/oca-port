@@ -22,7 +22,7 @@ def cli():
 @click.argument("addon", required=True)
 @click.option(
     "--reason",
-    default="Nothing to port from PR #{pr_number}",
+    default="Nothing to port from PR #{pr_ref}",
     show_default=True,
 )
 @click.option(
@@ -39,7 +39,8 @@ def blacklist(
 ):
     """Blacklist one or more PRs"""
     # eg: https://github.com/user/repo/pull/1234 or just the number
-    pr_numbers = [x.strip() for x in prs.split(",") if x.strip()]
+    # TODO: validate! Must be URL or ref like `OCA/edi#1`
+    pr_refs = [x.strip() for x in prs.split(",") if x.strip()]
 
     # TODO: we assume you are in the right repo folder when you run this
     repo = git.Repo(os.getcwd())
@@ -53,10 +54,10 @@ def blacklist(
             raise RemoteBranchValueError(repo.name, exc.args[1]) from exc
 
     storage = InputStorage(branch, addon)
-    for pr_number in pr_numbers:
-        storage.blacklist_pr(pr_number, reason=reason.format(pr_number=pr_number))
+    for ref in pr_refs:
+        storage.blacklist_pr(ref, reason=reason.format(pr_ref=ref))
     if storage.dirty:
-        msg = f"oca-port: blacklist PR(s) {', '.join(pr_numbers)} for {addon}"
+        msg = f"oca-port: blacklist PR(s) {', '.join(pr_refs)} for {addon}"
         storage.commit(msg)
 
 
