@@ -62,3 +62,32 @@ class Output:
     def _render_output_json(self, data):
         """Render the data as JSON."""
         return json.dumps(data)
+
+
+class SmartDict(dict):
+    """Dotted notation dict."""
+
+    def __getattr__(self, attrib):
+        val = self.get(attrib)
+        return self.__class__(val) if type(val) is dict else val
+
+
+REF_REGEX = r"((?P<org>[\w-]+)/)?((?P<repo>[\w-]+)#)?(?P<branch>.*)"
+
+
+def parse_gh_ref(ref):
+    """Parse github reference in the form [org/][repo#]branch"""
+    group = re.match(REF_REGEX, ref)
+    return SmartDict(group.groupdict()) if group else None
+
+
+def make_gh_info(kind, ref, remote=None):
+    info = parse_gh_ref(ref)
+    if not info:
+        # FIXME
+        raise ValueError(f"No valid {kind}")
+    info["_kind"] = kind
+    info["remote"] = remote or info.org
+    if not info.org:
+        info["org"] = "OCA"
+    return info
