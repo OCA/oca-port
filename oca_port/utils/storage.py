@@ -57,6 +57,9 @@ class InputStorage:
             content = blob.data_stream.read().decode()
             return json.loads(content, object_hook=misc.defaultdict_from_dict)
         except KeyError:
+            if os.getenv("BLACKLIST_FILE"):
+                with open(os.getenv("BLACKLIST_FILE")) as fd:
+                    return json.loads(fd.read(), object_hook=misc.defaultdict_from_dict)
             nested_dict = lambda: defaultdict(nested_dict)  # noqa
             return nested_dict()
 
