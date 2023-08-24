@@ -13,12 +13,25 @@ ported with all its commits if they were not yet (fully) ported.
 To check if an addon could be migrated or to get eligible commits to port:
 
     $ export GITHUB_TOKEN=<token>
-    $ oca-port 13.0 14.0 shopfloor --verbose
+    $ oca-port origin/13.0 origin/14.0 shopfloor --verbose
 
-To effectively migrate the addon or port its commits, use the `--fork` option:
+To effectively migrate the addon or port its commits, use the `--destination` option:
 
-    $ oca-port 13.0 14.0 shopfloor --fork camptocamp
+    $ oca-port origin/13.0 origin/14.0 shopfloor --destination camptocamp/14-mig-shopfloor
 
+Note that you can omit the remote to work on local branches if needed:
+
+    $ oca-port 13.0 camptocamp/14-dev shopfloor
+
+NOTE: if the source branch is a local one, cache will be readonly and
+won't be updated as commits data coming from such branch cannot be trust.
+
+The organization used to perform API requests to look for Pull Requests data
+is the one defined through `--upstream-org` parameter (defaults to 'OCA').
+So you can work on local source and target branches while performing API requests
+on the relevant upstream organization:
+
+    $ oca-port 14.0 16.0 shopfloor --upstream-org camptocamp
 
 Migration of addon
 ------------------
@@ -38,7 +51,6 @@ base the next PR on the previous one, allowing the user to cumulate ported PRs
 in one branch and creating a draft PR against the upstream repository with all
 of them.
 """
-import os
 
 import click
 
@@ -48,31 +60,33 @@ from ..utils.misc import bcolors as bc
 
 
 @click.command()
-@click.argument("from_branch", required=True)
-@click.argument("to_branch", required=True)
+@click.argument("source", required=True)
+@click.argument("target", required=True)
 @click.argument("addon", required=True)
 @click.option(
-    "--from-org",
+    "--destination",
+    help=("Git reference where work will be pushed, e.g. 'camptocamp/16.0-dev'."),
+)
+@click.option(
+    "--source-version",
+    help="Source Odoo version. To set if it cannot be detected from 'source'.",
+)
+@click.option(
+    "--target-version",
+    help="Target Odoo version. To set if it cannot be detected from 'target'.",
+)
+@click.option("--repo-name", help="Repository name, e.g. 'server-tools'.")
+@click.option(
+    "--upstream-org",
     default="OCA",
     show_default=True,
-    help="Upstream organization name.",
+    help="Upstream organization name. Used for API requests.",
 )
-@click.option(
-    "--from-remote",
-    default="origin",
-    show_default=True,
-    required=True,
-    help="Git remote from which source branches are fetched by default.",
-)
-@click.option("--repo-name", help="Repository name, eg. server-tools.")
-@click.option(
-    "--fork", help="Git remote where branches with ported commits are pushed."
-)
-@click.option("--user-org", show_default="--fork", help="User organization name.")
 @click.option("--verbose", is_flag=True, help="List the commits of Pull Requests.")
 @click.option(
     "--non-interactive", is_flag=True, help="Disable all interactive prompts."
 )
+@click.option("--dry-run", is_flag=True, help="Print results, no nothing.")
 @click.option(
     "--output",
     help=(
@@ -85,23 +99,27 @@ from ..utils.misc import bcolors as bc
 @click.option("--no-cache", is_flag=True, help="Disable user's cache.")
 @click.option("--clear-cache", is_flag=True, help="Clear the user's cache.")
 def main(
-    from_branch: str,
-    to_branch: str,
     addon: str,
-    from_org: str,
-    from_remote: str,
+    source: str,
+    target: str,
+    destination: str,
+    source_version: str,
+    target_version: str,
     repo_name: str,
-    fork: str,
-    user_org: str,
+    upstream_org: str,
     verbose: bool,
     non_interactive: bool,
     output: str,
     fetch: bool,
     no_cache: bool,
     clear_cache: bool,
+    dry_run: bool,
 ):
-    """Migrate ADDON from FROM_BRANCH to TO_BRANCH or list Pull Requests to port
-        if ADDON already exists on TO_BRANCH.
+    """Migrate ADDON from SOURCE to TARGET or list Pull Requests to port.
+
+        E.g.:
+
+        $ oca-port origin/14.0 origin/16.0 auditlog
 
         Migration:
 
@@ -109,29 +127,26 @@ def main(
 
         Port of Pull Requests (missing commits):
 
-            The PRs are found from FROM_BRANCH commits that do not exist in TO_BRANCH.
+            The PRs are found from SOURCE commits that do not exist in TARGET.
     The user will be asked if he wants to port them.
-
-        To start the migration process, the `--fork` option must be provided in
-    order to push the resulting branch on the user's remote.
     """
     try:
         app = App(
             addon=addon,
-            from_branch=from_branch,
-            to_branch=to_branch,
-            from_org=from_org,
-            from_remote=from_remote,
-            repo_path=os.getcwd(),
+            source=source,
+            target=target,
+            destination=destination,
+            source_version=source_version,
+            target_version=target_version,
             repo_name=repo_name,
-            fork=fork,
-            user_org=user_org,
+            upstream_org=upstream_org,
             verbose=verbose,
             non_interactive=non_interactive,
             output=output,
             fetch=fetch,
             no_cache=no_cache,
             clear_cache=clear_cache,
+            dry_run=dry_run,
             cli=True,
         )
     except ForkValueError as exc:

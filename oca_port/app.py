@@ -3,16 +3,17 @@
 import os
 import pathlib
 from dataclasses import dataclass
+import re
 
 import git
 
 from . import utils
-from .exceptions import ForkValueError, RemoteBranchValueError
+from .exceptions import RemoteBranchValueError
 from .migrate_addon import MigrateAddon
 from .port_addon_pr import PortAddonPullRequest
 from .utils.git import Branch
 from .utils.github import GitHub
-from .utils.misc import Output, bcolors as bc
+from .utils.misc import Output, bcolors as bc, extract_ref_info
 
 
 @dataclass
@@ -21,24 +22,23 @@ class App(Output):
 
     Parameters:
 
-        from_branch:
-            the source branch (e.g. '15.0')
-        to_branch:
-            the source branch (e.g. '16.0')
+        source:
+            string representation of the source branch, e.g. 'origin/15.0'
+        target:
+            string representation of the target branch, e.g. 'origin/16.0'
         addon:
             the name of the module to process
+        destination:
+            string representation of the destination branch,
+            e.g. 'camptocamp/16.0-addon-dev'
+        source_version:
+            Source Odoo version. To set if it cannot be detected from 'source'.
+        target_version:
+            Target Odoo version. To set if it cannot be detected from 'target'.
         repo_path:
             local path to the Git repository
-        fork:
-            name of the Git remote used as fork
         repo_name:
             name of the repository on the upstream organization (e.g. 'server-tools')
-        user_org:
-            name of the user's GitHub organization where the fork is hosted
-        from_org:
-            name of the upstream GitHub organization (default = 'OCA')
-        from_remote:
-            name of the Git remote considered as the upstream (default = 'origin')
         verbose:
             returns more details to the user
         non_interactive:
@@ -60,17 +60,18 @@ class App(Output):
             to not trigger the "API rate limit exceeded" error).
     """
 
-    from_branch: str
-    to_branch: str
+    source: str
+    target: str
     addon: str
-    repo_path: str
-    fork: str = None
+    destination: str = None
+    source_version: str = None
+    target_version: str = None
+    repo_path: str = ""
     repo_name: str = None
-    user_org: str = None
-    from_org: str = "OCA"
-    from_remote: str = "origin"
+    upstream_org: str = "OCA"
     verbose: bool = False
     non_interactive: bool = False
+    dry_run: bool = False
     output: str = None
     fetch: bool = False
     no_cache: bool = False
@@ -81,35 +82,7 @@ class App(Output):
     _available_outputs = ("json",)
 
     def __post_init__(self):
-        # Handle with repo_path and repo_name
-        if self.repo_path:
-            self.repo_path = pathlib.Path(self.repo_path)
-        else:
-            raise ValueError("'repo_path' has to be set.")
-        if not self.repo_name:
-            self.repo_name = self.repo_path.name
-        # Handle Git repository
-        self.repo = git.Repo(self.repo_path)
-        if self.repo.is_dirty(untracked_files=True):
-            raise ValueError("changes not committed detected in this repository.")
-        # Handle user's organization and fork
-        if not self.user_org:
-            # Assume that the fork remote has the same name than the user organization
-            self.user_org = self.fork
-        if self.fork:
-            if self.fork not in self.repo.remotes:
-                raise ForkValueError(self.repo_name, self.fork)
-        # Transform branch strings to Branch objects
-        try:
-            self.from_branch = Branch(
-                self.repo, self.from_branch, default_remote=self.from_remote
-            )
-            self.to_branch = Branch(
-                self.repo, self.to_branch, default_remote=self.from_remote
-            )
-        except ValueError as exc:
-            if exc.args[1] not in self.repo.remotes:
-                raise RemoteBranchValueError(self.repo_name, exc.args[1]) from exc
+        self._prepare_parameters()
         # Force non-interactive mode:
         #   - if we are not in CLI mode
         if not self.cli:
@@ -132,11 +105,102 @@ class App(Output):
             or (self.to_branch.remote and self.to_branch.ref() not in remote_branches)
         ):
             self.fetch_branches()
+        # Check if source & target branches exist
+        self._check_branch_exists(self.source.ref, raise_exc=True)
+        self._check_branch_exists(self.target.ref, raise_exc=True)
         # GitHub API helper
         self.github = GitHub(self.github_token or os.environ.get("GITHUB_TOKEN"))
         # Initialize storage & cache
         self.storage = utils.storage.InputStorage(self.to_branch, self.addon)
         self.cache = utils.cache.UserCacheFactory(self).build()
+
+    def _handle_odoo_versions(self):
+        odoo_version_pattern = r"^[0-9]+\.[0-9]$"
+        source_version = re.search(odoo_version_pattern, self.source.branch)
+        target_version = re.search(odoo_version_pattern, self.target.branch)
+        source_param = "--source-version" if self.cli else "source_version"
+        target_param = "--target-version" if self.cli else "target_version"
+        # Check Odoo versions from branches
+        if not source_version and not self.source_version:
+            raise ValueError(
+                f"Unable to identify Odoo source version from {self.source.branch}.\n"
+                f"Use {source_param} parameter to identify Odoo source version."
+            )
+        if not target_version and not self.target_version:
+            raise ValueError(
+                f"Unable to identify Odoo target version from {self.target.branch}.\n"
+                f"Use {target_param} parameter to identify target Odoo version."
+            )
+        # Check source_version and target_version parameters
+        if self.source_version and not re.search(
+            odoo_version_pattern, self.source_version
+        ):
+            raise ValueError(f"Unable to identify Odoo version from {source_param}.")
+        if self.target_version and not re.search(
+            odoo_version_pattern, self.target_version
+        ):
+            raise ValueError(f"Unable to identify Odoo version from {target_param}.")
+        self.source_version = self.source_version or source_version.string
+        self.target_version = self.target_version or target_version.string
+
+    def _prepare_parameters(self):
+        # Handle Git repository
+        self.repo = git.Repo(self.repo_path)
+        if self.repo.is_dirty(untracked_files=True):
+            raise ValueError("changes not committed detected in this repository.")
+
+        # Convert them to full remote info if needed
+        for key in ("source", "target", "destination"):
+            value = getattr(self, key)
+            if value and isinstance(value, str):
+                setattr(self, key, extract_ref_info(self.repo, key, value))
+        # Check Odoo versions from source and target branches and parameters
+        self._handle_odoo_versions()
+
+        # Always provide a destination:
+        if not self.destination:
+            self.destination = extract_ref_info(self.repo, "destination", "")
+            # Unset org that could have been taken from 'origin'.
+            self.destination.org = None
+            # If target.org is different than upstream_org, generate the
+            # destination from target so we get the remote+org for free (if any)
+            if self.target.org != self.upstream_org:
+                self.destination = extract_ref_info(
+                    self.repo, "destination", self.target.ref
+                )
+                # If destination is not a local one, or not an Odoo version,
+                # it will be generated by the specific tool
+                if (
+                    self.destination.remote
+                    or self.destination.branch == self.target_version
+                ):
+                    self.destination.branch = None
+
+        # Handle with repo_path and repo_name
+        self.repo_path = pathlib.Path(self.repo_path)
+        self.repo_name = (
+            self.repo_name
+            or self.source.repo
+            or self.target.repo
+            or self.repo_path.absolute().name
+        )
+        if not self.repo_path:
+            raise ValueError("'repo_path' has to be set.")
+
+        # Transform branch strings to Branch objects
+        self.from_branch = self._prepare_branch(self.source)
+        self.to_branch = self._prepare_branch(self.target)
+        self.dest_branch = self.to_branch
+        if self.destination.branch:
+            self.dest_branch = self._prepare_branch(self.destination)
+
+    def _prepare_branch(self, info):
+        try:
+            return Branch(self.repo, info.branch, default_remote=info.remote)
+        except ValueError as exc:
+            remote = exc.args[1]
+            if remote not in self.repo.remotes:
+                raise RemoteBranchValueError(info) from exc
 
     def fetch_branches(self):
         for branch in (self.from_branch, self.to_branch):
@@ -146,6 +210,14 @@ class App(Output):
             if self.verbose:
                 self._print(f"Fetch {bc.BOLD}{branch.ref()}{bc.END} from {remote_url}")
             branch.repo.remotes[branch.remote].fetch(branch.name)
+
+    def _check_branch_exists(self, branch, raise_exc=False):
+        for ref in self.repo.refs:
+            if branch == ref.name:
+                return True
+        if raise_exc:
+            raise ValueError(f"Ref {branch} doesn't exist.")
+        return False
 
     def _check_addon_exists(self, branch, raise_exc=False):
         repo = self.repo

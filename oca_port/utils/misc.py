@@ -1,6 +1,7 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
+import giturlparse
 import json
 import os
 import re
@@ -73,24 +74,48 @@ class SmartDict(dict):
         return self.__class__(val) if isinstance(val, dict) else val
 
 
-REF_REGEX = r"((?P<org>[\w-]+)/)?((?P<repo>[\w-]+)#)?(?P<branch>.*)"
+REF_REGEX = r"((?P<remote>[\w-]+)/)?(?P<branch>.*)"
 
 
-def parse_gh_ref(ref):
-    """Parse github reference in the form [org/][repo#]branch"""
+def parse_ref(ref):
+    """Parse reference in the form '[remote/]branch'."""
     group = re.match(REF_REGEX, ref)
     return SmartDict(group.groupdict()) if group else None
 
 
-def make_gh_info(kind, ref, remote=None):
-    info = parse_gh_ref(ref)
+def extract_ref_info(repo, kind, ref, remote=None):
+    """Extract info from `ref`.
+
+    >>> extract_ref_info(repo, "source", "origin/16.0")
+    {'remote': 'origin', 'repo': 'server-tools', 'platform': 'github', 'branch': '16.0', 'kind': 'src', 'org': 'OCA'}
+    """
+    info = parse_ref(ref)
     if not info:
-        # FIXME
         raise ValueError(f"No valid {kind}")
-    info["_kind"] = kind
-    info["remote"] = remote or info.org
-    if not info.org:
-        info["org"] = "OCA"
+    info["ref"] = ref
+    info["kind"] = kind
+    info["remote"] = info["remote"] or remote
+    info.update({"org": None, "platform": None})
+    if info["remote"]:
+        remote_url = repo.remotes[info["remote"]].url
+        p = giturlparse.parse(remote_url)
+        try:
+            info["repo"] = p.repo
+        except AttributeError:
+            pass
+        info["platform"] = p.platform
+        info["org"] = p.owner
+    else:
+        # Fallback on 'origin' to grab info like platform, and repository name
+        if "origin" in repo.remotes:
+            remote_url = repo.remotes["origin"].url
+            p = giturlparse.parse(remote_url)
+            try:
+                info["repo"] = p.repo
+            except AttributeError:
+                pass
+            info["platform"] = p.platform
+            info["org"] = p.owner
     return info
 
 

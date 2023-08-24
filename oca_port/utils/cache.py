@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import pathlib
-import shutil
 from collections import defaultdict
 
 from . import misc
@@ -97,6 +96,11 @@ class UserCache:
     def __init__(self, app):
         """Initialize user's cache manager."""
         self.app = app
+        # NOTE: set cache as readonly if the source branch is not linked to
+        # an organization (local branch): we cannot put in cache commits data
+        # coming from such branch in the behalf of upstream organization/repo,
+        # that could produce wrong cache results for further use.
+        self.readonly = not self.app.source.org
         self.dir_path = self._get_dir_path()
         self._ported_commits_path = self._get_ported_commits_path()
         self._ported_commits = self._get_ported_commits()
@@ -121,7 +125,7 @@ class UserCache:
         )
         return self.dir_path.joinpath(
             self._ported_dirname,
-            self.app.from_org,
+            self.app.upstream_org,
             self.app.repo_name,
             file_name,
         )
@@ -134,7 +138,7 @@ class UserCache:
         )
         return self.dir_path.joinpath(
             self._to_port_dirname,
-            self.app.from_org,
+            self.app.upstream_org,
             self.app.repo_name,
             file_name,
         )
@@ -144,7 +148,7 @@ class UserCache:
         file_name = f"{self.app.repo_name}.json"
         return self.dir_path.joinpath(
             self._commits_data_dirname,
-            self.app.from_org,
+            self.app.upstream_org,
             file_name,
         )
 
@@ -181,6 +185,8 @@ class UserCache:
 
     def mark_commit_as_ported(self, commit_sha: str):
         """Mark commit as ported."""
+        if self.readonly:
+            return
         if self.is_commit_ported(commit_sha):
             return
         self._ported_commits.append(commit_sha)
@@ -193,6 +199,8 @@ class UserCache:
 
     def store_commit_pr(self, commit_sha: str, data):
         """Store the original PR data of a commit."""
+        if self.readonly:
+            return
         pr_number = data["number"]
         self._commits_to_port["pull_requests"][str(pr_number)] = data
         self._commits_to_port["commits"][commit_sha]["pr"] = pr_number
@@ -210,10 +218,14 @@ class UserCache:
 
     def set_commit_files(self, commit_sha: str, files: list):
         """Set file paths modified by a commit."""
+        if self.readonly:
+            return
         self._commits_data[commit_sha]["files"] = list(files)
 
     def save(self):
         """Save cache files."""
+        if self.readonly:
+            return
         # commits/PRs to port
         self._save_cache(self._commits_to_port, self._commits_to_port_path)
         # commits data file

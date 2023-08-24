@@ -25,8 +25,12 @@ class Session:
         self.app = app
         self.dir_path = self._get_dir_path()
         self._sessions_dir_path = self._get_sessions_dir_path()
-        self._key = hashlib.md5(name.encode()).hexdigest()
-        session_file = f"{self._key}.json"
+        self._key = hashlib.shake_256(name.encode()).hexdigest(3)
+        session_file = (
+            f"{self.app.addon}"
+            f"-{self.app.source_version}-{self.app.target_version}"
+            f"-{self._key}.json"
+        )
         self._session_path = self._sessions_dir_path.joinpath(session_file)
 
     def __enter__(self):
