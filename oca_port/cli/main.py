@@ -42,9 +42,9 @@ import os
 
 import click
 
-from .app import App
-from .exceptions import ForkValueError, RemoteBranchValueError
-from .utils.misc import bcolors as bc
+from ..app import App
+from ..exceptions import ForkValueError, RemoteBranchValueError
+from ..utils.misc import bcolors as bc
 
 
 @click.command()
@@ -52,17 +52,17 @@ from .utils.misc import bcolors as bc
 @click.argument("to_branch", required=True)
 @click.argument("addon", required=True)
 @click.option(
-    "--upstream-org",
+    "--from-org",
     default="OCA",
     show_default=True,
     help="Upstream organization name.",
 )
 @click.option(
-    "--upstream",
+    "--from-remote",
     default="origin",
     show_default=True,
     required=True,
-    help="Git remote from which source and target branches are fetched by default.",
+    help="Git remote from which source branches are fetched by default.",
 )
 @click.option("--repo-name", help="Repository name, eg. server-tools.")
 @click.option(
@@ -88,8 +88,8 @@ def main(
     from_branch: str,
     to_branch: str,
     addon: str,
-    upstream_org: str,
-    upstream: str,
+    from_org: str,
+    from_remote: str,
     repo_name: str,
     fork: str,
     user_org: str,
@@ -117,11 +117,11 @@ def main(
     """
     try:
         app = App(
+            addon=addon,
             from_branch=from_branch,
             to_branch=to_branch,
-            addon=addon,
-            upstream_org=upstream_org,
-            upstream=upstream,
+            from_org=from_org,
+            from_remote=from_remote,
             repo_path=os.getcwd(),
             repo_name=repo_name,
             fork=fork,

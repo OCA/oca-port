@@ -33,9 +33,9 @@ class App(Output):
             name of the repository on the upstream organization (e.g. 'server-tools')
         user_org:
             name of the user's GitHub organization where the fork is hosted
-        upstream_org:
+        from_org:
             name of the upstream GitHub organization (default = 'OCA')
-        upstream:
+        from_remote:
             name of the Git remote considered as the upstream (default = 'origin')
         verbose:
             returns more details to the user
@@ -62,8 +62,8 @@ class App(Output):
     fork: str = None
     repo_name: str = None
     user_org: str = None
-    upstream_org: str = "OCA"
-    upstream: str = "origin"
+    from_org: str = "OCA"
+    from_remote: str = "origin"
     verbose: bool = False
     non_interactive: bool = False
     output: str = None
@@ -96,10 +96,10 @@ class App(Output):
         # Transform branch strings to Branch objects
         try:
             self.from_branch = Branch(
-                self.repo, self.from_branch, default_remote=self.upstream
+                self.repo, self.from_branch, default_remote=self.from_remote
             )
             self.to_branch = Branch(
-                self.repo, self.to_branch, default_remote=self.upstream
+                self.repo, self.to_branch, default_remote=self.from_remote
             )
         except ValueError as exc:
             if exc.args[1] not in self.repo.remotes:
