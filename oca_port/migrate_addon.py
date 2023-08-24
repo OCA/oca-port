@@ -22,7 +22,7 @@ MIG_TASKS_URL = (
 MIG_NEW_PR_TITLE = "[{to_branch}][MIG] {addon}"
 MIG_NEW_PR_URL = (
     "https://github.com/{from_org}/{repo_name}/compare/"
-    "{to_branch}...{user_org}:{mig_branch}?expand=1&title={title}"
+    "{to_branch}...{to_org}:{mig_branch}?expand=1&title={title}"
 )
 MIG_TIPS = "\n".join(
     [
@@ -36,7 +36,7 @@ MIG_TIPS = "\n".join(
             f"{bc.DIM}"
             "\t\t$ git add --all\n"
             '\t\t$ git commit -m "[MIG] {addon}: Migration to {to_branch}"\n'
-            "\t\t$ git push {fork} {mig_branch} --set-upstream"
+            "\t\t$ git push {remote} {mig_branch} --set-upstream"
             f"{bc.END}"
         ),
         "\t4) Create the PR against {from_org}/{repo_name}:",
@@ -49,7 +49,7 @@ BLACKLIST_TIPS = "\n".join(
         (
             "\t1) On a shell command, type this for uploading the content to GitHub:\n"
             f"{bc.DIM}"
-            "\t\t$ git push {fork} {mig_branch} --set-upstream"
+            "\t\t$ git push {remote} {mig_branch} --set-upstream"
             f"{bc.END}"
         ),
         "\t2) Create the PR against {from_org}/{repo_name}:",
@@ -85,11 +85,11 @@ class MigrateAddon(Output):
             return False, None
         # Looking for an existing PR to review
         existing_pr = None
-        if self.app.from_org and self.app.repo_name:
+        if self.app.source.org and self.app.repo_name:
             existing_pr = self.app.github.search_migration_pr(
-                from_org=self.app.from_org,
+                from_org=self.app.source.org,
                 repo_name=self.app.repo_name,
-                branch=self.app.to_branch.name,
+                branch=self.app.target.branch,
                 addon=self.app.addon,
             )
         if existing_pr:
@@ -122,8 +122,8 @@ class MigrateAddon(Output):
                 return False, None
         # Check if a migration PR already exists
         # TODO
-        if not self.app.fork:
-            raise click.UsageError("Please set the '--fork' option")
+        if not self.app.destination:
+            raise click.UsageError("Please set the '--destination' option")
         if self.app.repo.untracked_files:
             raise click.ClickException("Untracked files detected, abort")
         self._checkout_base_branch()
@@ -208,29 +208,29 @@ class MigrateAddon(Output):
             )
         )
         new_pr_url = MIG_NEW_PR_URL.format(
-            from_org=self.app.from_org,
+            from_org=self.app.source.org,
             repo_name=self.app.repo_name,
             to_branch=self.app.to_branch.name,
-            user_org=self.app.user_org,
+            to_org=self.app.destination.org,
             mig_branch=self.mig_branch.name,
             title=pr_title_encoded,
         )
         if blacklisted:
             tips = BLACKLIST_TIPS.format(
-                from_org=self.app.from_org,
+                from_org=self.app.source.org,
                 repo_name=self.app.repo_name,
-                fork=self.app.fork,
+                remote=self.app.destination.remote,
                 mig_branch=self.mig_branch.name,
                 new_pr_url=new_pr_url,
             )
             print(tips)
             return
         tips = MIG_TIPS.format(
-            from_org=self.app.from_org,
+            from_org=self.app.source.org,
             repo_name=self.app.repo_name,
             addon=self.app.addon,
             to_branch=self.app.to_branch.name,
-            fork=self.app.fork,
+            remote=self.app.destination.remote,
             mig_branch=self.mig_branch.name,
             mig_tasks_url=mig_tasks_url,
             new_pr_url=new_pr_url,

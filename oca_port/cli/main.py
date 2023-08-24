@@ -15,10 +15,17 @@ To check if an addon could be migrated or to get eligible commits to port:
     $ export GITHUB_TOKEN=<token>
     $ oca-port 13.0 14.0 shopfloor --verbose
 
-To effectively migrate the addon or port its commits, use the `--fork` option:
+To effectively migrate the addon or port its commits, use the `--destination` option:
 
-    $ oca-port 13.0 14.0 shopfloor --fork camptocamp
+    $ oca-port 13.0 14.0 shopfloor --destination camptocamp/wms#14-mig-shopfloor
 
+Note that you can specify organization,
+repo and branch at the same time for both source and target:
+
+    $ oca-port OCA/wms#13.0 camptocamp/wms#14-dev
+
+The organization will be used by default as the remote name but you can override that
+by using `--source-remote`, `--target-remote` and `--destination-remote`.
 
 Migration of addon
 ------------------
@@ -38,7 +45,6 @@ base the next PR on the previous one, allowing the user to cumulate ported PRs
 in one branch and creating a draft PR against the upstream repository with all
 of them.
 """
-import os
 
 import click
 
@@ -48,27 +54,29 @@ from ..utils.misc import bcolors as bc
 
 
 @click.command()
-@click.argument("from_branch", required=True)
-@click.argument("to_branch", required=True)
+@click.argument("source", required=True)
+@click.argument("target", required=True)
 @click.argument("addon", required=True)
 @click.option(
-    "--from-org",
-    default="OCA",
-    show_default=True,
-    help="Upstream organization name.",
+    "--destination",
+    help=(
+        "Git reference where work will be pushed, "
+        "e.g. 'camptocamp/server-tools#16.0-dev'."
+    ),
 )
 @click.option(
-    "--from-remote",
-    default="origin",
-    show_default=True,
-    required=True,
-    help="Git remote from which source branches are fetched by default.",
+    "--source-remote",
+    help="Git remote from which source branch is fetched, e.g. 'origin'.",
 )
-@click.option("--repo-name", help="Repository name, eg. server-tools.")
 @click.option(
-    "--fork", help="Git remote where branches with ported commits are pushed."
+    "--target-remote",
+    help="Git remote from which target branch is fetched, e.g. 'origin'.",
 )
-@click.option("--user-org", show_default="--fork", help="User organization name.")
+@click.option(
+    "--destination-remote",
+    help="Git remote to which destination branch is pushed, e.g. 'camptocamp'.",
+)
+@click.option("--repo-name", help="Repository name, e.g. 'server-tools'.")
 @click.option("--verbose", is_flag=True, help="List the commits of Pull Requests.")
 @click.option(
     "--non-interactive", is_flag=True, help="Disable all interactive prompts."
@@ -85,14 +93,14 @@ from ..utils.misc import bcolors as bc
 @click.option("--no-cache", is_flag=True, help="Disable user's cache.")
 @click.option("--clear-cache", is_flag=True, help="Clear the user's cache.")
 def main(
-    from_branch: str,
-    to_branch: str,
     addon: str,
-    from_org: str,
-    from_remote: str,
+    source: str,
+    target: str,
+    destination: str,
+    source_remote: str,
+    target_remote: str,
+    destination_remote: str,
     repo_name: str,
-    fork: str,
-    user_org: str,
     verbose: bool,
     non_interactive: bool,
     output: str,
@@ -100,8 +108,12 @@ def main(
     no_cache: bool,
     clear_cache: bool,
 ):
-    """Migrate ADDON from FROM_BRANCH to TO_BRANCH or list Pull Requests to port
-        if ADDON already exists on TO_BRANCH.
+    """Migrate ADDON from SOURCE to TARGET or list Pull Requests to port
+        if ADDON already exists on TARGET.
+
+        E.g.:
+
+        $ oca-port OCA/server-tools#14.0 OCA/server-tools#16.0 auditlog
 
         Migration:
 
@@ -109,23 +121,22 @@ def main(
 
         Port of Pull Requests (missing commits):
 
-            The PRs are found from FROM_BRANCH commits that do not exist in TO_BRANCH.
+            The PRs are found from SOURCE commits that do not exist in TARGET.
     The user will be asked if he wants to port them.
 
-        To start the migration process, the `--fork` option must be provided in
+        To start the migration process, the `--destination` option must be provided in
     order to push the resulting branch on the user's remote.
     """
     try:
         app = App(
             addon=addon,
-            from_branch=from_branch,
-            to_branch=to_branch,
-            from_org=from_org,
-            from_remote=from_remote,
-            repo_path=os.getcwd(),
+            source=source,
+            target=target,
+            destination=destination,
+            source_remote=source_remote,
+            target_remote=target_remote,
+            destination_remote=destination_remote,
             repo_name=repo_name,
-            fork=fork,
-            user_org=user_org,
             verbose=verbose,
             non_interactive=non_interactive,
             output=output,

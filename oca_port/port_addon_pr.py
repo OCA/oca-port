@@ -95,7 +95,7 @@ class PortAddonPullRequest(Output):
                 # Nothing to port -> return an empty output
                 return False, self._render_output(self.app.output, {})
             return False, None
-        if self.app.fork:
+        if self.app.destination:
             self._print()
             self._port_pull_requests(branches_diff)
         return True, None
@@ -328,16 +328,18 @@ class PortAddonPullRequest(Output):
         return False, ""
 
     def _push_branch_to_remote(self, branch):
-        """Force push the local branch to remote fork."""
+        """Force push the local branch to remote destination fork."""
         if not self.push_branch:
             return False
         confirm = (
             f"\tPush branch '{bc.BOLD}{branch.name}{bc.END}' "
-            f"to remote '{bc.BOLD}{self.app.fork}{bc.END}'?"
+            f"to remote '{bc.BOLD}{self.app.destination.remote}{bc.END}'?"
         )
         if click.confirm(confirm):
-            branch.repo.git.push(self.app.fork, branch.name, "--force-with-lease")
-            branch.remote = self.app.fork
+            branch.repo.git.push(
+                self.app.destination.remote, branch.name, "--force-with-lease"
+            )
+            branch.remote = self.app.destination.remote
             return True
         return False
 
@@ -374,7 +376,7 @@ class PortAddonPullRequest(Output):
         params = {
             "q": (
                 f"is:pr "
-                f"repo:{self.app.from_org}/{self.app.repo_name} "
+                f"repo:{self.app.source.org}/{self.app.repo_name} "
                 f"base:{base_branch} "
                 f"state:open {title} in:title"
             ),
@@ -394,10 +396,10 @@ class PortAddonPullRequest(Output):
         if click.confirm(
             f"\tCreate a draft PR from '{bc.BOLD}{pr_branch.name}{bc.END}' "
             f"to '{bc.BOLD}{self.app.to_branch.name}{bc.END}' "
-            f"against {bc.BOLD}{self.app.from_org}/{self.app.repo_name}{bc.END}?"
+            f"against {bc.BOLD}{self.app.source.org}/{self.app.repo_name}{bc.END}?"
         ):
             response = self.app.github.request(
-                f"repos/{self.app.from_org}/{self.app.repo_name}/pulls",
+                f"repos/{self.app.source.org}/{self.app.repo_name}/pulls",
                 method="post",
                 json=pr_data,
             )
@@ -640,7 +642,7 @@ class BranchesDiff(Output):
         if not any("github.com" in remote.url for remote in self.app.repo.remotes):
             return
         raw_data = self.app.github.get_original_pr(
-            self.app.from_org,
+            self.app.source.org,
             self.app.repo_name,
             self.app.from_branch.name,
             commit.hexsha,
@@ -651,7 +653,7 @@ class BranchesDiff(Output):
             # NOTE: commits fetched from PR are already in the right order
             pr_number = raw_data["number"]
             pr_commits_data = self.app.github.request(
-                f"repos/{self.app.from_org}/{self.app.repo_name}"
+                f"repos/{self.app.source.org}/{self.app.repo_name}"
                 f"/pulls/{pr_number}/commits?per_page=100"
             )
             pr_commits = [pr["sha"] for pr in pr_commits_data]

@@ -12,7 +12,7 @@ from .migrate_addon import MigrateAddon
 from .port_addon_pr import PortAddonPullRequest
 from .utils.git import Branch
 from .utils.github import GitHub
-from .utils.misc import Output, bcolors as bc
+from .utils.misc import Output, bcolors as bc, make_gh_info
 
 
 @dataclass
@@ -21,24 +21,19 @@ class App(Output):
 
     Parameters:
 
-        from_branch:
-            the source branch (e.g. '15.0')
-        to_branch:
-            the source branch (e.g. '16.0')
+        source:
+            string representation of the source branch, e.g. 'OCA/server-tools#15.0'
+        target:
+            string representation of the target branch, e.g. 'OCA/server-tools#16.0'
+        destination:
+            string representation of the destination branch,
+            e.g. 'camptocamp/server-tools#16.0-dev'
         addon:
             the name of the module to process
         repo_path:
             local path to the Git repository
-        fork:
-            name of the Git remote used as fork
         repo_name:
             name of the repository on the upstream organization (e.g. 'server-tools')
-        user_org:
-            name of the user's GitHub organization where the fork is hosted
-        from_org:
-            name of the upstream GitHub organization (default = 'OCA')
-        from_remote:
-            name of the Git remote considered as the upstream (default = 'origin')
         verbose:
             returns more details to the user
         non_interactive:
@@ -60,15 +55,15 @@ class App(Output):
             to not trigger the "API rate limit exceeded" error).
     """
 
-    from_branch: str
-    to_branch: str
+    source: object
+    target: object
+    destination: object
     addon: str
-    repo_path: str
-    fork: str = None
+    source_remote: str = ""
+    target_remote: str = ""
+    destination_remote: str = ""
+    repo_path: str = ""
     repo_name: str = None
-    user_org: str = None
-    from_org: str = "OCA"
-    from_remote: str = "origin"
     verbose: bool = False
     non_interactive: bool = False
     output: str = None
@@ -81,35 +76,7 @@ class App(Output):
     _available_outputs = ("json",)
 
     def __post_init__(self):
-        # Handle with repo_path and repo_name
-        if self.repo_path:
-            self.repo_path = pathlib.Path(self.repo_path)
-        else:
-            raise ValueError("'repo_path' has to be set.")
-        if not self.repo_name:
-            self.repo_name = self.repo_path.name
-        # Handle Git repository
-        self.repo = git.Repo(self.repo_path)
-        if self.repo.is_dirty(untracked_files=True):
-            raise ValueError("changes not committed detected in this repository.")
-        # Handle user's organization and fork
-        if not self.user_org:
-            # Assume that the fork remote has the same name than the user organization
-            self.user_org = self.fork
-        if self.fork:
-            if self.fork not in self.repo.remotes:
-                raise ForkValueError(self.repo_name, self.fork)
-        # Transform branch strings to Branch objects
-        try:
-            self.from_branch = Branch(
-                self.repo, self.from_branch, default_remote=self.from_remote
-            )
-            self.to_branch = Branch(
-                self.repo, self.to_branch, default_remote=self.from_remote
-            )
-        except ValueError as exc:
-            if exc.args[1] not in self.repo.remotes:
-                raise RemoteBranchValueError(self.repo_name, exc.args[1]) from exc
+        self._prepare_repos()
         # Force non-interactive mode:
         #   - if we are not in CLI mode
         if not self.cli:
@@ -137,6 +104,38 @@ class App(Output):
         # Initialize storage & cache
         self.storage = utils.storage.InputStorage(self.to_branch, self.addon)
         self.cache = utils.cache.UserCacheFactory(self).build()
+
+    def _prepare_repos(self):
+        # Convert them to full gh info if needed
+        for key in ("source", "target", "destination"):
+            value = getattr(self, key)
+            remote = getattr(self, f"{key}_remote")
+            if value and isinstance(value, str):
+                setattr(self, key, make_gh_info(key, value, remote=remote))
+
+        # Handle with repo_path and repo_name
+        self.repo_path = pathlib.Path(self.repo_path)
+        self.repo_name = self.repo_name or self.source.repo or self.repo_path.name
+        if not self.repo_path:
+            raise ValueError("'repo_path' has to be set.")
+
+        # Handle Git repository
+        self.repo = git.Repo(self.repo_path)
+        if self.repo.is_dirty(untracked_files=True):
+            raise ValueError("changes not committed detected in this repository.")
+        if self.destination and self.destination.remote not in self.repo.remotes:
+            raise ForkValueError(self.repo_name, self.destination.remote)
+        # Transform branch strings to Branch objects
+        try:
+            self.from_branch = Branch(
+                self.repo, self.source.branch, default_remote=self.source.remote
+            )
+            self.to_branch = Branch(
+                self.repo, self.target.branch, default_remote=self.target.remote
+            )
+        except ValueError as exc:
+            if exc.args[1] not in self.repo.remotes:
+                raise RemoteBranchValueError(self.repo_name, exc.args[1]) from exc
 
     def fetch_branches(self):
         for branch in (self.from_branch, self.to_branch):

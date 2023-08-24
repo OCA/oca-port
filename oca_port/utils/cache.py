@@ -105,7 +105,7 @@ class UserCache:
         )
         return self.dir_path.joinpath(
             self._ported_dirname,
-            self.app.from_org,
+            self.app.source.org,
             self.app.repo_name,
             file_name,
         )
@@ -118,7 +118,7 @@ class UserCache:
         )
         return self.dir_path.joinpath(
             self._to_port_dirname,
-            self.app.from_org,
+            self.app.source.org,
             self.app.repo_name,
             file_name,
         )
