@@ -2,7 +2,8 @@
 name = "oca_port"
 authors = [
     {name = "Odoo Community Association (OCA)"},
-    {name = "Sébastien Alix", email="sebastien.alix@camptocamp.com"}
+    {name = "Sébastien Alix", email="sebastien.alix@camptocamp.com"},
+    {name = "Simone Orsi", email="simone.orsi@camptocamp.com"}
 ]
 description = "OCA tool to help with modules migration"
 readme = "README.md"
@@ -28,6 +29,7 @@ repository = "https://github.com/OCA/oca-port"
 
 [project.scripts]
 oca-port = "oca_port.cli.main:main"
+oca-port-pr = "oca_port.cli.pr:cli"
 
 [project.optional-dependencies]
 test = [
