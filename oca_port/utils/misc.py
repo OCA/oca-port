@@ -91,3 +91,11 @@ def make_gh_info(kind, ref, remote=None):
     if not info.org:
         info["org"] = "OCA"
     return info
+
+
+def pr_ref_from_url(url):
+    if not url:
+        return ""
+    # url like 'https://github.com/OCA/edi/pull/371'
+    org, repo, __, nr = url.split("/")[3:]
+    return f"{org}/{repo}#{nr}"
