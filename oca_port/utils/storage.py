@@ -29,7 +29,7 @@ class InputStorage:
 
         {
           "pull_requests": {
-            490: "lint changes"
+            "OCA/repo#490": "lint changes"
           }
         }
     """

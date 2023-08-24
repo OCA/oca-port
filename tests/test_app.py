@@ -94,6 +94,7 @@ class TestApp(common.CommonCase):
             output["results"][""],
             {
                 "url": "",
+                "ref": "",
                 "author": "",
                 "title": "",
                 "merged_at": "",
