@@ -275,6 +275,10 @@ class PortAddonPullRequest(Output):
             )
         branch_name = self.app.destination.branch
         if branch_name in self.app.repo.heads:
+            if self.app.destination.skip_recreate:
+                self._print("\tSkip branch recreate flag ON")
+                self.app.repo.git.checkout(branch_name)
+                return branch_name, based_on_previous
             # If the local branch already exists, ask the user if he wants
             # to recreate it + check if this existing branch is based on
             # the previous PR branch

@@ -62,6 +62,7 @@ class App(Output):
     source_remote: str = ""
     target_remote: str = ""
     destination_remote: str = ""
+    skip_dest_branch_recreate: bool = False
     repo_path: str = ""
     repo_name: str = None
     verbose: bool = False
@@ -125,6 +126,7 @@ class App(Output):
                 remote=self.destination_remote or self.target.remote,
                 branch=None,
             )
+        self.destination["skip_recreate"] = self.skip_dest_branch_recreate
 
         # Handle with repo_path and repo_name
         self.repo_path = pathlib.Path(self.repo_path)

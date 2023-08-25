@@ -83,6 +83,12 @@ from ..utils.misc import bcolors as bc
 )
 @click.option("--dry-run", is_flag=True, help="Print results, no nothing.")
 @click.option(
+    "--skip-dest-branch-recreate",
+    is_flag=True,
+    help="Avoid recreating the destination branch "
+    "if existing when porting PRs (and asking for it)",
+)
+@click.option(
     "--output",
     help=(
         "Returns the result in a given format. "
@@ -104,6 +110,7 @@ def main(
     repo_name: str,
     verbose: bool,
     non_interactive: bool,
+    skip_dest_branch_recreate: bool,
     output: str,
     fetch: bool,
     no_cache: bool,
@@ -138,6 +145,7 @@ def main(
             source_remote=source_remote,
             target_remote=target_remote,
             destination_remote=destination_remote,
+            skip_dest_branch_recreate=skip_dest_branch_recreate,
             repo_name=repo_name,
             verbose=verbose,
             non_interactive=non_interactive,
