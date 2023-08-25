@@ -82,15 +82,17 @@ def parse_gh_ref(ref):
     return SmartDict(group.groupdict()) if group else None
 
 
-def make_gh_info(kind, ref, remote=None):
+def make_gh_info(kind, ref, remote=None, **kw):
     info = parse_gh_ref(ref)
     if not info:
         # FIXME
         raise ValueError(f"No valid {kind}")
     info["_kind"] = kind
+    info["_ref"] = ref
     info["remote"] = remote or info.org
     if not info.org:
         info["org"] = "OCA"
+    info.update(kw)
     return info
 
 
