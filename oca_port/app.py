@@ -66,6 +66,7 @@ class App(Output):
     repo_name: str = None
     verbose: bool = False
     non_interactive: bool = False
+    dry_run: bool = False
     output: str = None
     fetch: bool = False
     no_cache: bool = False

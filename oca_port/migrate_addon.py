@@ -101,7 +101,7 @@ class MigrateAddon(Output):
                 "Thank you!"
             )
             self._results["results"]["existing_pr"] = existing_pr.to_dict(number=True)
-        if self.app.non_interactive:
+        if self.app.non_interactive or self.app.dry_run:
             # If an output is defined we return the result in the expected format
             if self.app.output:
                 return True, self._render_output(self.app.output, self._results)
@@ -120,10 +120,6 @@ class MigrateAddon(Output):
             self.app.storage.blacklist_addon(confirm=True)
             if not self.app.storage.dirty:
                 return False, None
-        # Check if a migration PR already exists
-        # TODO
-        if not self.app.destination:
-            raise click.UsageError("Please set the '--destination' option")
         if self.app.repo.untracked_files:
             raise click.ClickException("Untracked files detected, abort")
         self._checkout_base_branch()

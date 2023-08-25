@@ -81,6 +81,7 @@ from ..utils.misc import bcolors as bc
 @click.option(
     "--non-interactive", is_flag=True, help="Disable all interactive prompts."
 )
+@click.option("--dry-run", is_flag=True, help="Print results, no nothing.")
 @click.option(
     "--output",
     help=(
@@ -107,6 +108,7 @@ def main(
     fetch: bool,
     no_cache: bool,
     clear_cache: bool,
+    dry_run: bool,
 ):
     """Migrate ADDON from SOURCE to TARGET or list Pull Requests to port
         if ADDON already exists on TARGET.
@@ -143,6 +145,7 @@ def main(
             fetch=fetch,
             no_cache=no_cache,
             clear_cache=clear_cache,
+            dry_run=dry_run,
             cli=True,
         )
     except ForkValueError as exc:

@@ -95,8 +95,9 @@ class PortAddonPullRequest(Output):
                 # Nothing to port -> return an empty output
                 return False, self._render_output(self.app.output, {})
             return False, None
-        if self.app.destination:
-            self._print()
+        # Print empty line
+        self._print()
+        if not self.app.dry_run:
             self._port_pull_requests(branches_diff)
         return True, None
 
