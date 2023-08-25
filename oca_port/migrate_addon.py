@@ -62,12 +62,12 @@ class MigrateAddon(Output):
     def __init__(self, app):
         self.app = app
         self._results = {"process": "migrate", "results": {}}
-        self.mig_branch = g.Branch(
-            self.app.repo,
-            MIG_BRANCH_NAME.format(
+        if not self.app.destination.branch:
+            default_mig_branch_name = MIG_BRANCH_NAME.format(
                 branch=self.app.to_branch.name[:4], addon=self.app.addon
-            ),
-        )
+            )
+            self.app.destination["branch"] = default_mig_branch_name
+        self.mig_branch = g.Branch(self.app.repo, self.app.destination.branch)
 
     def run(self):
         if self.app.check_addon_exists_to_branch():

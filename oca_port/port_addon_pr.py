@@ -264,12 +264,13 @@ class PortAddonPullRequest(Output):
         previous_pr_branch=False,
         based_on_previous=False,
     ):
-        branch_name = PR_BRANCH_NAME.format(
-            from_branch=self.app.from_branch.name,
-            to_branch=self.app.to_branch.name,
-            pr_number=pr.number,
-        )
-        self._print(f"Creating branch {branch_name}")
+        if not self.app.destination.branch:
+            self.app.destination["branch"] = PR_BRANCH_NAME.format(
+                from_branch=self.app.from_branch.name,
+                to_branch=self.app.to_branch.name,
+                pr_number=pr.number,
+            )
+        branch_name = self.app.destination.branch
         if branch_name in self.app.repo.heads:
             # If the local branch already exists, ask the user if he wants
             # to recreate it + check if this existing branch is based on

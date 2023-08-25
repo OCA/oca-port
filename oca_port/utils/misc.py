@@ -73,6 +73,8 @@ class SmartDict(dict):
         return self.__class__(val) if type(val) is dict else val
 
 
+# TODO: for destination support skipping the branch
+# as it can be generated automatically by the tool
 REF_REGEX = r"((?P<org>[\w-]+)/)?((?P<repo>[\w-]+)#)?(?P<branch>.*)"
 
 
