@@ -167,9 +167,10 @@ class PortAddonPullRequest(Output):
         """Port commits of a Pull Request in a new branch."""
         if pr.number:
             self._print(
-                f"- {bc.BOLD}{bc.OKCYAN}Port PR #{pr.number}{bc.END} "
-                f"({pr.url}) {bc.OKCYAN}{pr.title}{bc.ENDC}..."
+                f"- {bc.BOLD}{bc.OKCYAN}Port PR {pr.ref}{bc.END} "
+                f"{bc.OKCYAN}{pr.title}{bc.ENDC}..."
             )
+            self._print(f"\t{pr.url}")
         else:
             self._print(f"- {bc.BOLD}{bc.OKCYAN}Port commits w/o PR{bc.END}...")
         based_on_previous = False
@@ -488,8 +489,8 @@ class BranchesDiff(Output):
         for i, pr in enumerate(self.commits_diff, 1):
             if pr.number:
                 lines_to_print.append(
-                    f"{i}) {bc.BOLD}{bc.OKBLUE}PR #{pr.number}{bc.END} "
-                    f"({pr.url or 'w/o PR'}) {bc.OKBLUE}{pr.title}{bc.ENDC}:"
+                    f"{i}) {bc.BOLD}{bc.OKBLUE}{pr.ref}{bc.END} "
+                    f"{bc.OKBLUE}{pr.title}{bc.ENDC}:"
                 )
                 lines_to_print.append(f"\tBy {pr.author}, merged at {pr.merged_at}")
             else:
@@ -507,6 +508,8 @@ class BranchesDiff(Output):
                 f"\t=> {bc.BOLD}{bc.OKBLUE}{len(self.commits_diff[pr])} "
                 f"commit(s){bc.END} not (fully) ported"
             )
+            if pr.number:
+                lines_to_print.append(f"\t=> {pr.url}")
             if verbose or not pr.number:
                 for commit in self.commits_diff[pr]:
                     lines_to_print.append(
