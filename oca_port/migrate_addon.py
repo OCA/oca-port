@@ -105,6 +105,11 @@ class MigrateAddon(Output):
             )
             self._results["results"]["existing_pr"] = existing_pr.to_dict(number=True)
         if self.app.non_interactive or self.app.dry_run:
+            self._print(
+                f"ℹ️  {bc.BOLD}{self.app.addon}{bc.END} can be migrated "
+                f"from {bc.BOLD}{self.app.source_version}{bc.END} "
+                f"to {bc.BOLD}{self.app.target_version}{bc.END}."
+            )
             # If an output is defined we return the result in the expected format
             if self.app.output:
                 return True, self._render_output(self.app.output, self._results)
