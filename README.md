@@ -34,6 +34,20 @@ To effectively migrate the addon or port its commits, use the `--fork` option:
 
     $ oca-port 14.0 15.0 shopfloor --fork camptocamp
 
+You can also directly blacklist a bunch of PRs on a given branch thanks to the
+`oca-port-pr` tool:
+
+    $ oca-port-pr blacklist OCA/wms#250,OCA/wms#251 15.0 shopfloor
+
+You could give a more detailed reason of this blacklist with `--reason` parameter:
+
+    $ oca-port-pr blacklist OCA/wms#250,OCA/wms#251 15.0 shopfloor --reason "Refactored in 15.0, not needed anymore"
+
+And if the module has been moved to another repository, you can specify its remote as well:
+
+    $ git remote add new_repo git@github.com:OCA/new-repo.git
+    $ oca-port-pr blacklist OCA/wms#250,OCA/wms#251 15.0 shopfloor --remote new_repo
+
 Migration of addon
 ------------------
 
