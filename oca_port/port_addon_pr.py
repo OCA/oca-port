@@ -192,40 +192,15 @@ class PortAddonPullRequest(Output):
                 return None, based_on_previous
         # Create a local branch based on upstream
         if self.create_branch:
-            branch_name = PR_BRANCH_NAME.format(
-                from_branch=self.app.from_branch.name,
-                to_branch=self.app.to_branch.name,
-                pr_number=pr.number,
+            branch_name, based_on_previous = self._create_branch(
+                pr,
+                base_ref,
+                previous_pr=previous_pr,
+                previous_pr_branch=previous_pr_branch,
+                based_on_previous=based_on_previous,
             )
-            if branch_name in self.app.repo.heads:
-                # If the local branch already exists, ask the user if he wants
-                # to recreate it + check if this existing branch is based on
-                # the previous PR branch
-                if previous_pr_branch:
-                    based_on_previous = self.app.repo.is_ancestor(
-                        previous_pr_branch.name, branch_name
-                    )
-                confirm = (
-                    f"\tBranch {bc.BOLD}{branch_name}{bc.END} already exists, "
-                    "recreate it?\n\t(⚠️  you will lose the existing branch)"
-                )
-                if not click.confirm(confirm):
-                    return g.Branch(self.app.repo, branch_name), based_on_previous
-                self.app.repo.delete_head(branch_name, "-f")
-            if previous_pr and click.confirm(
-                f"\tUse the previous {bc.BOLD}PR #{previous_pr.number}{bc.END} "
-                "branch as base?"
-            ):
-                base_ref = previous_pr_branch
-                based_on_previous = True
-                # Set the new branch name the same than the previous one
-                # but with the PR number as suffix.
-                branch_name = f"{previous_pr_branch.name}-{pr.number}"
-            self._print(
-                f"\tCreate branch {bc.BOLD}{branch_name}{bc.END} from {base_ref.ref()}..."
-            )
-            self.app.repo.git.checkout("--no-track", "-b", branch_name, base_ref.ref())
         else:
+            # TODO: add self.app.destination_branch and replace `to_branch` everywhere
             branch_name = self.app.to_branch.name
         # If the PR has been blacklisted we need to commit this information
         if self.app.storage.dirty:
@@ -280,6 +255,50 @@ class PortAddonPullRequest(Output):
                     self.app.repo.git.am("--abort")
                     continue
         return g.Branch(self.app.repo, branch_name), based_on_previous
+
+    def _create_branch(
+        self,
+        pr,
+        base_ref,
+        previous_pr=None,
+        previous_pr_branch=False,
+        based_on_previous=False,
+    ):
+        branch_name = PR_BRANCH_NAME.format(
+            from_branch=self.app.from_branch.name,
+            to_branch=self.app.to_branch.name,
+            pr_number=pr.number,
+        )
+        self._print(f"Creating branch {branch_name}")
+        if branch_name in self.app.repo.heads:
+            # If the local branch already exists, ask the user if he wants
+            # to recreate it + check if this existing branch is based on
+            # the previous PR branch
+            if previous_pr_branch:
+                based_on_previous = self.app.repo.is_ancestor(
+                    previous_pr_branch.name, branch_name
+                )
+            confirm = (
+                f"\tBranch {bc.BOLD}{branch_name}{bc.END} already exists, "
+                "recreate it?\n\t(⚠️  you will lose the existing branch)"
+            )
+            if not click.confirm(confirm):
+                return branch_name, based_on_previous
+            self.app.repo.delete_head(branch_name, "-f")
+        if previous_pr and click.confirm(
+            f"\tUse the previous {bc.BOLD}PR #{previous_pr.number}{bc.END} "
+            "branch as base?"
+        ):
+            base_ref = previous_pr_branch
+            based_on_previous = True
+            # Set the new branch name the same than the previous one
+            # but with the PR number as suffix.
+            branch_name = f"{previous_pr_branch.name}-{pr.number}"
+        self._print(
+            f"\tCreate branch {bc.BOLD}{branch_name}{bc.END} from {base_ref.ref()}..."
+        )
+        self.app.repo.git.checkout("--no-track", "-b", branch_name, base_ref.ref())
+        return branch_name, based_on_previous
 
     @staticmethod
     def _skip_diff(commit, diff):
