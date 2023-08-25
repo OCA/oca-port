@@ -125,19 +125,22 @@ class PortAddonPullRequest(Output):
                 # If none has been ported, blacklist automatically the current PR.
                 if self.app.repo.commit(pr_branch.ref()) == current_commit:
                     self._print("\tℹ️  Nothing has been ported, skipping")
-                    self.app.storage.blacklist_pr(
-                        pr.number,
-                        confirm=True,
-                        reason=f"(auto) Nothing to port from PR #{pr.number}",
-                    )
-                    if self.app.storage.dirty:
-                        self.app.storage.commit()
-                    msg = (
-                        f"\t{bc.DIM}PR #{pr.number} has been"
-                        if pr.number
-                        else "Orphaned commits have been"
-                    ) + f" automatically blacklisted{bc.ENDD}"
-                    self._print(msg)
+                    # Do not ask to blacklist if already blacklisted.
+                    # This might happen when a migration process has been interrupted brutally.
+                    if not self.app.storage.is_pr_blacklisted(pr.ref):
+                        self.app.storage.blacklist_pr(
+                            pr.ref,
+                            confirm=True,
+                            reason=f"(auto) Nothing to port from PR #{pr.ref}",
+                        )
+                        if self.app.storage.dirty:
+                            self.app.storage.commit()
+                        msg = (
+                            f"\t{bc.DIM}PR #{pr.number} has been"
+                            if pr.number
+                            else "Orphaned commits have been"
+                        ) + f" automatically blacklisted{bc.ENDD}"
+                        self._print(msg)
                     continue
                 previous_pr = pr
                 previous_pr_branch = pr_branch
