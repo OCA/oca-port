@@ -89,6 +89,13 @@ from ..utils.misc import bcolors as bc
     "if existing when porting PRs (and asking for it)",
 )
 @click.option(
+    "--push-only-when-done",
+    is_flag=True,
+    help="Avoid asking to push on every change ported. "
+    "Instead, keep working on the same local branch "
+    "and ask to push only at the end.",
+)
+@click.option(
     "--output",
     help=(
         "Returns the result in a given format. "
@@ -111,6 +118,7 @@ def main(
     verbose: bool,
     non_interactive: bool,
     skip_dest_branch_recreate: bool,
+    push_only_when_done: bool,
     output: str,
     fetch: bool,
     no_cache: bool,
@@ -146,6 +154,7 @@ def main(
             target_remote=target_remote,
             destination_remote=destination_remote,
             skip_dest_branch_recreate=skip_dest_branch_recreate,
+            push_only_when_done=push_only_when_done,
             repo_name=repo_name,
             verbose=verbose,
             non_interactive=non_interactive,

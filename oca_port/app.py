@@ -63,6 +63,7 @@ class App(Output):
     target_remote: str = ""
     destination_remote: str = ""
     skip_dest_branch_recreate: bool = False
+    push_only_when_done: bool = False
     repo_path: str = ""
     repo_name: str = None
     verbose: bool = False

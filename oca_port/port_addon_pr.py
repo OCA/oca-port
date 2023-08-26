@@ -148,9 +148,10 @@ class PortAddonPullRequest(Output):
                     processed_prs.append(pr)
                 else:
                     processed_prs = [pr]
-                if pr == last_pr:
+                is_last = pr == last_pr
+                if is_last:
                     self._print("\t🎉 Last PR processed! 🎉")
-                is_pushed = self._push_branch_to_remote(pr_branch)
+                is_pushed = self._push_branch_to_remote(pr_branch, is_last=is_last)
                 if not is_pushed:
                     continue
                 pr_data = self._prepare_pull_request_data(processed_prs, pr_branch)
