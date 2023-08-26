@@ -74,7 +74,7 @@ class PortAddonPullRequest(Output):
             return False, None
         self._print(
             f"{bc.BOLD}{self.app.addon}{bc.END} already exists "
-            f"on {bc.BOLD}{self.app.to_branch.name}{bc.END}, "
+            f"on {bc.BOLD}{self.app.destination.branch}{bc.END}, "
             "checking PRs to port..."
         )
         branches_diff = BranchesDiff(self.app)
@@ -179,7 +179,7 @@ class PortAddonPullRequest(Output):
         else:
             self._print(f"- {bc.BOLD}{bc.OKCYAN}Port commits w/o PR{bc.END}...")
         based_on_previous = False
-        # Ensure to not start to work from a working branch
+        # Ensure we have a local checkout of the target branch
         if self.app.to_branch.name in self.app.repo.heads:
             self.app.repo.heads[self.app.to_branch.name].checkout()
         else:
@@ -203,9 +203,6 @@ class PortAddonPullRequest(Output):
                 previous_pr_branch=previous_pr_branch,
                 based_on_previous=based_on_previous,
             )
-        else:
-            # TODO: add self.app.destination_branch and replace `to_branch` everywhere
-            branch_name = self.app.to_branch.name
         # If the PR has been blacklisted we need to commit this information
         if self.app.storage.dirty:
             self.app.storage.commit()
@@ -357,9 +354,9 @@ class PortAddonPullRequest(Output):
                 )
         return False, ""
 
-    def _push_branch_to_remote(self, branch):
+    def _push_branch_to_remote(self, branch, is_last=False):
         """Force push the local branch to remote destination fork."""
-        if not self.push_branch:
+        if not self.push_branch or self.app.push_only_when_done and not is_last:
             return False
         confirm = (
             f"\tPush branch '{bc.BOLD}{branch.name}{bc.END}' "
@@ -397,7 +394,7 @@ class PortAddonPullRequest(Output):
         return {
             "draft": True,
             "title": title,
-            "head": f"{self.app.user_org}:{pr_branch.name}",
+            "head": f"{self.app.destination.org}:{pr_branch.name}",
             "base": self.app.to_branch.name,
             "body": body,
         }
@@ -452,11 +449,11 @@ class BranchesDiff(Output):
         self.from_branch_all_commits, _ = self._get_branch_commits(
             self.app.from_branch.ref()
         )
-        self.to_branch_path_commits, _ = self._get_branch_commits(
-            self.app.to_branch.ref(), self.path
+        self.dest_branch_path_commits, _ = self._get_branch_commits(
+            self.app.dest_branch.ref(), self.path
         )
-        self.to_branch_all_commits, _ = self._get_branch_commits(
-            self.app.to_branch.ref()
+        self.dest_branch_all_commits, _ = self._get_branch_commits(
+            self.app.dest_branch.ref()
         )
         self.commits_diff = self.get_commits_diff()
         self.serialized_diff = self._serialize_diff(self.commits_diff)
@@ -553,26 +550,26 @@ class BranchesDiff(Output):
                 f"and {bc.BOLD}{bc.OKBLUE}{nb_commits} commit(s) w/o "
                 f"PR{bc.END} related to '{bc.OKBLUE}{self.path}"
                 f"{bc.ENDC}' to port from {self.app.from_branch.ref()} "
-                f"to {self.app.to_branch.ref()}"
+                f"to {self.app.dest_branch.ref()}"
             )
         else:
             message = (
                 f"{bc.BOLD}{bc.OKBLUE}{i} pull request(s){bc.END} "
                 f"related to '{bc.OKBLUE}{self.path}{bc.ENDC}' to port from "
-                f"{self.app.from_branch.ref()} to {self.app.to_branch.ref()}"
+                f"{self.app.from_branch.ref()} to {self.app.dest_branch.ref()}"
             )
         lines_to_print.insert(0, message)
         self._print("\n".join(lines_to_print))
 
     def get_commits_diff(self):
-        """Returns the commits which do not exist in `to_branch`, grouped by
+        """Returns the commits which do not exist in `dest_branch`, grouped by
         their related Pull Request.
 
         :return: a dict {PullRequest: {Commit: data, ...}, ...}
         """
         commits_by_pr = defaultdict(list)
         for commit in self.from_branch_path_commits:
-            if commit in self.to_branch_all_commits:
+            if commit in self.dest_branch_all_commits:
                 self.app.cache.mark_commit_as_ported(commit.hexsha)
                 continue
             # Get related Pull Request if any
@@ -599,18 +596,18 @@ class BranchesDiff(Output):
                     # Indeed a commit could have been ported partially
                     # in the past (with git-format-patch), and we now want
                     # to port the remaining chunks.
-                    if pr_commit not in self.to_branch_path_commits:
+                    if pr_commit not in self.dest_branch_path_commits:
                         paths = set(pr_commit_paths)
                         # A commit could have been ported several times
                         # if it was impacting several addons and the
                         # migration has been done with git-format-patch
                         # on each addon separately
-                        to_branch_all_commits = self.to_branch_all_commits[:]
+                        dest_branch_all_commits = self.dest_branch_all_commits[:]
                         skip_pr_commit = False
                         with g.no_strict_commit_equality():
-                            while pr_commit in to_branch_all_commits:
-                                index = to_branch_all_commits.index(pr_commit)
-                                ported_commit = to_branch_all_commits.pop(index)
+                            while pr_commit in dest_branch_all_commits:
+                                index = dest_branch_all_commits.index(pr_commit)
+                                ported_commit = dest_branch_all_commits.pop(index)
                                 ported_commit_paths = {
                                     path
                                     for path in ported_commit.paths
@@ -630,8 +627,8 @@ class BranchesDiff(Output):
                     # for the addon we are interested in.
                     # If the commit has already been included, skip it.
                     if (
-                        pr_commit in self.to_branch_path_commits
-                        and pr_commit in self.to_branch_all_commits
+                        pr_commit in self.dest_branch_path_commits
+                        and pr_commit in self.dest_branch_all_commits
                     ):
                         continue
                     existing_pr_commits = commits_by_pr.get(pr, [])

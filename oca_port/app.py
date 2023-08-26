@@ -142,16 +142,19 @@ class App(Output):
         if self.destination.remote and self.destination.remote not in self.repo.remotes:
             raise ForkValueError(self.repo_name, self.destination.remote)
         # Transform branch strings to Branch objects
+        self.from_branch = self._prepare_branch(self.source)
+        self.to_branch = self._prepare_branch(self.target)
+        self.dest_branch = self.to_branch
+        if self.destination.branch:
+            self.dest_branch = self._prepare_branch(self.destination)
+
+    def _prepare_branch(self, info):
         try:
-            self.from_branch = Branch(
-                self.repo, self.source.branch, default_remote=self.source.remote
-            )
-            self.to_branch = Branch(
-                self.repo, self.target.branch, default_remote=self.target.remote
-            )
+            return Branch(self.repo, info.branch, default_remote=info.remote)
         except ValueError as exc:
-            if exc.args[1] not in self.repo.remotes:
-                raise RemoteBranchValueError(self.repo_name, exc.args[1]) from exc
+            remote = exc.args[1]
+            if remote not in self.repo.remotes:
+                raise RemoteBranchValueError(info) from exc
 
     def fetch_branches(self):
         for branch in (self.from_branch, self.to_branch):
