@@ -79,3 +79,36 @@ More details here : [OCA Days 2022 - Sébastien Alix and Simone Orsi: oca-port:n
 
 If used with the `--non-interactive` option, the returned exit code is `110`
 if some pull requests/commits could be ported.
+
+API
+---
+
+You can also use `oca-port` as a Python package:
+
+```python
+>>> import oca_port
+>>> app = oca_port.App(
+...     from_branch="14.0",
+...     to_branch="16.0",
+...     addon="stock_move_auto_assign",
+...     from_org": "OCA",
+...     from_remote": "origin",
+...     repo_path": "/home/odoo/OCA/stock-logistics-warehouse",
+...     output": "json",
+...     fetch": True,
+... )
+>>> json_data = app.run()
+>>> data = json.loads(json_data)
+>>> from pprint import pprint as pp
+>>> pp(data)
+{'process': 'port_commits',
+ 'results': {'1631': {'author': 'TDu',
+                      'merged_at': '2023-04-04T17:06:03Z',
+                      'missing_commits': ['41416c1d7dad15ce4745e07d0541c79e938c2710',
+                                          'd43985a443e29641447a3811f2310d54b886ab3d',
+                                          '6bd9fcff3e814a6802c7aefadb9c646194cde42b'],
+                      'ref': 'OCA/stock-logistics-warehouse#1631',
+                      'title': '[14][ADD] stock_move_auto_assign_auto_release '
+                               '- backport',
+                      'url': 'https://github.com/OCA/stock-logistics-warehouse/pull/1631'}}}
+```
