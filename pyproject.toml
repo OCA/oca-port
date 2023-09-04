@@ -34,6 +34,7 @@ oca-port-pr = "oca_port.cli.pr:cli"
 [project.optional-dependencies]
 test = [
   "pytest",
+  "coverage",
 ]
 
 [build-system]

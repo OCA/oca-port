@@ -50,6 +50,7 @@ class Output:
     def _print(self, *args, **kwargs):
         """Like built-in 'print' method but check if oca-port is used in CLI."""
         app = self
+        # FIXME: determine class
         if hasattr(self, "app"):
             app = self.app
         if app.cli and not app.output:
