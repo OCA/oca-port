@@ -2,6 +2,7 @@
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
 import os
+import re
 
 import requests
 
@@ -56,7 +57,7 @@ def search_migration_pr(from_org: str, repo_name: str, branch: str, addon: str):
     for pr in prs.get("items", {}):
         # Searching for 'a' on GitHub could return a result containing 'a_b'
         # so we check the result for the exact module name to return a relevant PR.
-        if any(addon == term for term in pr["title"].split()):
+        if _addon_in_text(addon, pr["title"]):
             return PullRequest(
                 number=pr["number"],
                 url=pr["html_url"],
@@ -64,3 +65,8 @@ def search_migration_pr(from_org: str, repo_name: str, branch: str, addon: str):
                 title=pr["title"],
                 body=pr["body"],
             )
+
+
+def _addon_in_text(addon, text):
+    """Return `True` if `addon` is present in `text`."""
+    return any(addon == term for term in re.split(r"\W+", text))
