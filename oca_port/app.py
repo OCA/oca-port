@@ -140,7 +140,7 @@ class App(Output):
         if self.repo.is_dirty(untracked_files=True):
             raise ValueError("changes not committed detected in this repository.")
         if self.destination.remote and self.destination.remote not in self.repo.remotes:
-            raise ForkValueError(self.repo_name, self.destination.remote)
+            raise ForkValueError(self.destination)
         # Transform branch strings to Branch objects
         self.from_branch = self._prepare_branch(self.source)
         self.to_branch = self._prepare_branch(self.target)

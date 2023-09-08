@@ -166,14 +166,14 @@ def main(
             cli=True,
         )
     except ForkValueError as exc:
-        error_msg = prepare_remote_error_msg(*exc.args)
+        error_msg = prepare_remote_error_msg(exc.entity)
         error_msg += (
             "\n\nYou can change the GitHub organization with the "
             f"{bc.DIM}--user-org{bc.END} option."
         )
         raise click.ClickException(error_msg) from exc
     except RemoteBranchValueError as exc:
-        error_msg = prepare_remote_error_msg(*exc.args)
+        error_msg = prepare_remote_error_msg(exc.entity)
         raise click.ClickException(error_msg) from exc
     except ValueError as exc:
         raise click.ClickException(exc) from exc
@@ -184,17 +184,18 @@ def main(
         raise click.ClickException(exc) from exc
 
 
-def prepare_remote_error_msg(repo_name, remote):
+def prepare_remote_error_msg(entity):
     return (
-        f"No remote {bc.FAIL}{remote}{bc.END} in the current repository.\n"
+        f"No remote for {bc.FAIL}{entity._kind} {entity._ref}{bc.END} "
+        "in the current repository.\n"
         "To add it:\n"
         "\t# This mode requires an SSH key in the GitHub account\n"
-        f"\t{bc.DIM}$ git remote add {remote} "
-        f"git@github.com:{remote}/{repo_name}.git{bc.END}\n"
+        f"\t{bc.DIM}$ git remote add {entity.org} "
+        f"git@github.com:{entity.org}/{entity.repo}.git{bc.END}\n"
         "   Or:\n"
         "\t# This will require to enter user/password each time\n"
-        f"\t{bc.DIM}$ git remote add {remote} "
-        f"https://github.com/{remote}/{repo_name}.git{bc.END}"
+        f"\t{bc.DIM}$ git remote add {entity.org} "
+        f"https://github.com/{entity.org}/{entity.repo}.git{bc.END}"
     )
 
 
