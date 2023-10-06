@@ -50,21 +50,25 @@ def search_migration_pr(from_org: str, repo_name: str, branch: str, addon: str):
     # NOTE: If the module we are looking for is named 'a_b' and the PR title is
     # written 'a b', we won't get any result, but that's better than returning
     # the wrong PR to the user.
+    # NOTE 2: we first search for open PRs, then closed ones (could be closed
+    # automatically by bots for inactivity)
     repo = f"{from_org}/{repo_name}"
-    prs = request(
-        f"search/issues?q=is:pr+is:open+repo:{repo}+base:{branch}+in:title++mig+{addon}"
-    )
-    for pr in prs.get("items", {}):
-        # Searching for 'a' on GitHub could return a result containing 'a_b'
-        # so we check the result for the exact module name to return a relevant PR.
-        if _addon_in_text(addon, pr["title"]):
-            return PullRequest(
-                number=pr["number"],
-                url=pr["html_url"],
-                author=pr["user"]["login"],
-                title=pr["title"],
-                body=pr["body"],
-            )
+    for pr_state in ("open", "unmerged"):
+        prs = request(
+            f"search/issues?q=is:pr+is:{pr_state}+repo:{repo}"
+            f"+base:{branch}+in:title++mig+{addon}"
+        )
+        for pr in prs.get("items", {}):
+            # Searching for 'a' on GitHub could return a result containing 'a_b'
+            # so we check the result for the exact module name to return a relevant PR.
+            if _addon_in_text(addon, pr["title"]):
+                return PullRequest(
+                    number=pr["number"],
+                    url=pr["html_url"],
+                    author=pr["user"]["login"],
+                    title=pr["title"],
+                    body=pr["body"],
+                )
 
 
 def _addon_in_text(addon, text):
