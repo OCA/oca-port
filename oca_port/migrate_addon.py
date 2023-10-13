@@ -120,6 +120,8 @@ class MigrateAddon(Output):
             self.app.storage.blacklist_addon(confirm=True)
             if not self.app.storage.dirty:
                 return False, None
+        if not self.app.destination and not self.app.dry_run:
+            raise click.UsageError("Please set the '--destination' option")
         if self.app.repo.untracked_files:
             raise click.ClickException("Untracked files detected, abort")
         self._checkout_base_branch()
