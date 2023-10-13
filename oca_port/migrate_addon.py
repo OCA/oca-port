@@ -8,7 +8,7 @@ import urllib.parse
 import click
 
 from .port_addon_pr import PortAddonPullRequest
-from .utils import git as g, github
+from .utils import git as g
 from .utils.misc import Output, bcolors as bc
 
 MIG_BRANCH_NAME = "{branch}-mig-{addon}"
@@ -81,7 +81,7 @@ class MigrateAddon(Output):
         # Looking for an existing PR to review
         existing_pr = None
         if self.app.from_org and self.app.repo_name:
-            existing_pr = github.search_migration_pr(
+            existing_pr = self.app.github.search_migration_pr(
                 from_org=self.app.from_org,
                 repo_name=self.app.repo_name,
                 branch=self.app.to_branch.name,

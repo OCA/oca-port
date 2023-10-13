@@ -1,5 +1,6 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
+import os
 import pathlib
 from dataclasses import dataclass
 
@@ -10,6 +11,7 @@ from .exceptions import ForkValueError, RemoteBranchValueError
 from .migrate_addon import MigrateAddon
 from .port_addon_pr import PortAddonPullRequest
 from .utils.git import Branch
+from .utils.github import GitHub
 from .utils.misc import Output, bcolors as bc
 
 
@@ -53,6 +55,9 @@ class App(Output):
             flag to disable the user's cache
         clear_cache:
             flag to remove the user's cache once the process is done
+        github_token:
+            Token to use when requesting GitHub API (highly recommended
+            to not trigger the "API rate limit exceeded" error).
     """
 
     from_branch: str
@@ -70,6 +75,7 @@ class App(Output):
     fetch: bool = False
     no_cache: bool = False
     clear_cache: bool = False
+    github_token: str = None
     cli: bool = False  # Not documented, should not be used outside of the CLI
 
     _available_outputs = ("json",)
@@ -126,6 +132,8 @@ class App(Output):
             or (self.to_branch.remote and self.to_branch.ref() not in remote_branches)
         ):
             self.fetch_branches()
+        # GitHub API helper
+        self.github = GitHub(self.github_token or os.environ.get("GITHUB_TOKEN"))
         # Initialize storage & cache
         self.storage = utils.storage.InputStorage(self.to_branch, self.addon)
         self.cache = utils.cache.UserCacheFactory(self).build()

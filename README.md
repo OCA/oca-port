@@ -96,6 +96,7 @@ You can also use `oca-port` as a Python package:
 ...     repo_path": "/home/odoo/OCA/stock-logistics-warehouse",
 ...     output": "json",
 ...     fetch": True,
+...     github_token: "ghp_sheeXai3xu1yoopheiquoo3ohch0AefooSob"
 ... )
 >>> json_data = app.run()
 >>> data = json.loads(json_data)

@@ -9,7 +9,7 @@ from collections import defaultdict
 import click
 import git
 
-from .utils import git as g, github, misc
+from .utils import git as g, misc
 from .utils.misc import Output, bcolors as bc
 
 AUTHOR_EMAILS_TO_SKIP = [
@@ -362,7 +362,7 @@ class PortAddonPullRequest(Output):
                 f"state:open {title} in:title"
             ),
         }
-        response = github.request("search/issues", params=params)
+        response = self.app.github.request("search/issues", params=params)
         if response["items"]:
             return response["items"][0]["html_url"]
 
@@ -379,7 +379,7 @@ class PortAddonPullRequest(Output):
             f"to '{bc.BOLD}{self.app.to_branch.name}{bc.END}' "
             f"against {bc.BOLD}{self.app.from_org}/{self.app.repo_name}{bc.END}?"
         ):
-            response = github.request(
+            response = self.app.github.request(
                 f"repos/{self.app.from_org}/{self.app.repo_name}/pulls",
                 method="post",
                 json=pr_data,
@@ -622,7 +622,7 @@ class BranchesDiff(Output):
         # Request GitHub to get them
         if not any("github.com" in remote.url for remote in self.app.repo.remotes):
             return
-        raw_data = github.get_original_pr(
+        raw_data = self.app.github.get_original_pr(
             self.app.from_org,
             self.app.repo_name,
             self.app.from_branch.name,
@@ -633,7 +633,7 @@ class BranchesDiff(Output):
             # than the one the user is interested in.
             # NOTE: commits fetched from PR are already in the right order
             pr_number = raw_data["number"]
-            pr_commits_data = github.request(
+            pr_commits_data = self.app.github.request(
                 f"repos/{self.app.from_org}/{self.app.repo_name}"
                 f"/pulls/{pr_number}/commits?per_page=100"
             )
