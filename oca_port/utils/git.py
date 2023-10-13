@@ -31,7 +31,10 @@ class Branch:
     def ref(self):
         ref = self.name
         if self.remote:
-            ref = f"{self.remote}/{self.name}"
+            ref_with_remote = f"{self.remote}/{self.name}"
+            # Ensure the branch is tracking a remote branch
+            if ref_with_remote in self.repo.refs:
+                ref = ref_with_remote
         return ref
 
 
