@@ -19,11 +19,12 @@ class TestApp(common.CommonCase):
             "no_cache": self._settings["no_cache"],
         }
         params.update(kwargs)
-        # NOTE: app will run in non-interactive mode
         return App(**params)
 
     def test_app_nothing_to_port(self):
-        app = self._create_app(self._settings["branch1"], self._settings["branch2"])
+        app = self._create_app(
+            self._settings["remote_branch1"], self._settings["remote_branch2"]
+        )
         try:
             app.run()
         except SystemExit as exc:
@@ -31,8 +32,14 @@ class TestApp(common.CommonCase):
             self.assertEqual(exc.args[0], 0)
 
     def test_app_commit_to_port(self):
-        app = self._create_app(self._settings["branch1"], self._settings["branch2"])
-        self._commit_change_on_branch(self._settings["branch1"])
+        self._commit_change_on_branch(
+            self.repo_upstream_path, self._settings["branch1"]
+        )
+        app = self._create_app(
+            self._settings["remote_branch1"],
+            self._settings["remote_branch2"],
+            fetch=True,
+        )
         try:
             app.run()
         except SystemExit as exc:
@@ -40,12 +47,16 @@ class TestApp(common.CommonCase):
             self.assertEqual(exc.args[0], 110)
         # The other way around, no commit to backport (no exception)
         # (with CLI, the returned exit code is then 0)
-        app = self._create_app(self._settings["branch2"], self._settings["branch1"])
+        app = self._create_app(
+            self._settings["remote_branch2"], self._settings["remote_branch1"]
+        )
         res = app.run()
         self.assertFalse(res)
 
     def test_app_module_to_migrate(self):
-        app = self._create_app(self._settings["branch2"], self._settings["branch3"])
+        app = self._create_app(
+            self._settings["remote_branch2"], self._settings["remote_branch3"]
+        )
         try:
             app.run()
         except SystemExit as exc:
@@ -53,24 +64,31 @@ class TestApp(common.CommonCase):
             self.assertEqual(exc.args[0], 100)
         # The other way around, nothing to migrate as the module doesn't exist
         # (with CLI, the returned exit code is then 1)
-        app = self._create_app(self._settings["branch3"], self._settings["branch2"])
-        error_msg = "my_module does not exist on 17.0"
+        app = self._create_app(
+            self._settings["remote_branch3"], self._settings["remote_branch2"]
+        )
+        error_msg = "my_module does not exist on origin/17.0"
         with self.assertRaisesRegex(ValueError, error_msg):
             app.run()
 
     def test_app_commit_to_port_non_interactive(self):
-        app = self._create_app(
-            self._settings["branch1"],
-            self._settings["branch2"],
-            non_interactive=True,
+        self._commit_change_on_branch(
+            self.repo_upstream_path, self._settings["branch1"]
         )
-        self._commit_change_on_branch(self._settings["branch1"])
+        app = self._create_app(
+            self._settings["remote_branch1"],
+            self._settings["remote_branch2"],
+            non_interactive=True,
+            fetch=True,
+        )
         result = app.run()
         self.assertTrue(result)
         self.assertIsInstance(result, bool)
         # The other way around, no commit to backport
         app = self._create_app(
-            self._settings["branch2"], self._settings["branch1"], non_interactive=True
+            self._settings["remote_branch2"],
+            self._settings["remote_branch1"],
+            non_interactive=True,
         )
         result = app.run()
         self.assertFalse(result)
@@ -78,8 +96,8 @@ class TestApp(common.CommonCase):
 
     def test_app_module_to_migrate_non_interactive(self):
         app = self._create_app(
-            self._settings["branch2"],
-            self._settings["branch3"],
+            self._settings["remote_branch2"],
+            self._settings["remote_branch3"],
             non_interactive=True,
         )
         result = app.run()
@@ -87,27 +105,32 @@ class TestApp(common.CommonCase):
         self.assertIsInstance(result, bool)
         # The other way around, nothing to migrate as the module doesn't exist
         app = self._create_app(
-            self._settings["branch3"], self._settings["branch2"], non_interactive=True
+            self._settings["remote_branch3"],
+            self._settings["remote_branch2"],
+            non_interactive=True,
         )
-        error_msg = "my_module does not exist on 17.0"
+        error_msg = "my_module does not exist on origin/17.0"
         with self.assertRaisesRegex(ValueError, error_msg):
             app.run()
 
     def test_app_wrong_output(self):
         with self.assertRaisesRegex(ValueError, "Supported outputs are"):
             self._create_app(
-                self._settings["branch2"],
-                self._settings["branch3"],
+                self._settings["remote_branch2"],
+                self._settings["remote_branch3"],
                 output="wrong_format",
             )
 
     def test_app_commit_to_port_output_json(self):
-        app = self._create_app(
-            self._settings["branch1"],
-            self._settings["branch2"],
-            output="json",
+        commit_sha = self._commit_change_on_branch(
+            self.repo_upstream_path, self._settings["branch1"]
         )
-        commit_sha = self._commit_change_on_branch(self._settings["branch1"])
+        app = self._create_app(
+            self._settings["remote_branch1"],
+            self._settings["remote_branch2"],
+            output="json",
+            fetch=True,
+        )
         output = app.run()
         self.assertTrue(output)
         self.assertIsInstance(output, str)
@@ -128,7 +151,9 @@ class TestApp(common.CommonCase):
         )
         # The other way around, no commit to backport
         app = self._create_app(
-            self._settings["branch2"], self._settings["branch1"], output="json"
+            self._settings["remote_branch2"],
+            self._settings["remote_branch1"],
+            output="json",
         )
         output = app.run()
         self.assertTrue(output)
@@ -138,8 +163,8 @@ class TestApp(common.CommonCase):
 
     def test_app_module_to_migrate_output_json(self):
         app = self._create_app(
-            self._settings["branch2"],
-            self._settings["branch3"],
+            self._settings["remote_branch2"],
+            self._settings["remote_branch3"],
             output="json",
         )
         output = app.run()
@@ -150,8 +175,10 @@ class TestApp(common.CommonCase):
         self.assertEqual(output["results"], {})
         # The other way around, nothing to migrate as the module doesn't exist
         app = self._create_app(
-            self._settings["branch3"], self._settings["branch2"], output="json"
+            self._settings["remote_branch3"],
+            self._settings["remote_branch2"],
+            output="json",
         )
-        error_msg = "my_module does not exist on 17.0"
+        error_msg = "my_module does not exist on origin/17.0"
         with self.assertRaisesRegex(ValueError, error_msg):
             app.run()
