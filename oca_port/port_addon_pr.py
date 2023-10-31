@@ -181,15 +181,7 @@ class PortAddonPullRequest(Output):
             self._print(f"- {bc.BOLD}{bc.OKCYAN}Port commits w/o PR{bc.END}...")
         based_on_previous = False
         # Ensure we have a local checkout of the target branch
-        if self.app.to_branch.name in self.app.repo.heads:
-            self.app.repo.heads[self.app.to_branch.name].checkout()
-        else:
-            self.app.repo.git.checkout(
-                "--no-track",
-                "-b",
-                self.app.to_branch.name,
-                self.app.to_branch.ref(),
-            )
+        self.app.to_branch.checkout(create=True)
         # Ask the user if he wants to port the PR (or orphaned commits)
         if not click.confirm("\tPort it?" if pr.number else "\tPort them?"):
             self.app.storage.blacklist_pr(pr.ref, confirm=True)
@@ -272,26 +264,26 @@ class PortAddonPullRequest(Output):
                 to_branch=self.app.to_branch.name,
                 pr_number=pr.number,
             )
-        branch_name = self.app.destination.branch
-        if branch_name in self.app.repo.heads:
+        dest_branch = self.app.dest_branch
+        if dest_branch.exists():
             if self.app.destination.skip_recreate:
                 self._print("\tSkip branch recreate flag ON")
-                self.app.repo.git.checkout(branch_name)
-                return branch_name, based_on_previous
+                dest_branch.checkout()
+                return dest_branch.name, based_on_previous
             # If the local branch already exists, ask the user if he wants
             # to recreate it + check if this existing branch is based on
             # the previous PR branch
             if previous_pr_branch:
                 based_on_previous = self.app.repo.is_ancestor(
-                    previous_pr_branch.name, branch_name
+                    previous_pr_branch.name, dest_branch.name
                 )
             confirm = (
-                f"\tBranch {bc.BOLD}{branch_name}{bc.END} already exists, "
+                f"\tBranch {bc.BOLD}{dest_branch.name}{bc.END} already exists, "
                 "recreate it?\n\t(⚠️  you will lose the existing branch)"
             )
             if not click.confirm(confirm):
-                return branch_name, based_on_previous
-            self.app.repo.delete_head(branch_name, "-f")
+                return dest_branch.name, based_on_previous
+            self.app.repo.delete_head(dest_branch.name, "-f")
         if previous_pr and click.confirm(
             f"\tUse the previous {bc.BOLD}PR #{previous_pr.number}{bc.END} "
             "branch as base?"
@@ -301,11 +293,12 @@ class PortAddonPullRequest(Output):
             # Set the new branch name the same than the previous one
             # but with the PR number as suffix.
             branch_name = f"{previous_pr_branch.name}-{pr.number}"
+            dest_branch = g.Branch(self.app.repo, branch_name)
         self._print(
-            f"\tCreate branch {bc.BOLD}{branch_name}{bc.END} from {base_ref.ref()}..."
+            f"\tCreate branch {bc.BOLD}{dest_branch.name}{bc.END} from {base_ref.ref()}..."
         )
-        self.app.repo.git.checkout("--no-track", "-b", branch_name, base_ref.ref())
-        return branch_name, based_on_previous
+        dest_branch.checkout(create=True)
+        return dest_branch.name, based_on_previous
 
     @staticmethod
     def _skip_diff(commit, diff):

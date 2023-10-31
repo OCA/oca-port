@@ -67,7 +67,9 @@ class MigrateAddon(Output):
                 branch=self.app.to_branch.name[:4], addon=self.app.addon
             )
             self.app.destination["branch"] = default_mig_branch_name
-        self.mig_branch = self.app._prepare_branch(self.app.destination)
+        self.mig_branch = self.app._prepare_branch(
+            self.app.destination, base_ref=self.app.to_branch.ref()
+        )
 
     def run(self):
         if self.app.check_addon_exists_to_branch():
@@ -124,7 +126,8 @@ class MigrateAddon(Output):
             raise click.UsageError("Please set the '--destination' option")
         if self.app.repo.untracked_files:
             raise click.ClickException("Untracked files detected, abort")
-        self._checkout_base_branch()
+        # Ensure to not start to work from a working branch
+        self.app.to_branch.checkout()
         if self._create_mig_branch():
             # Case where the addon shouldn't be ported (blacklisted)
             if self.app.storage.dirty:
@@ -138,20 +141,10 @@ class MigrateAddon(Output):
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(self.app, create_branch=False, push_branch=False).run()
+        # Ensure we are on the migration branch and print tips
+        self.mig_branch.checkout()
         self._print_tips()
         return True, None
-
-    def _checkout_base_branch(self):
-        # Ensure to not start to work from a working branch
-        if self.app.to_branch.name in self.app.repo.heads:
-            self.app.repo.heads[self.app.to_branch.name].checkout()
-        else:
-            self.app.repo.git.checkout(
-                "--no-track",
-                "-b",
-                self.app.to_branch.name,
-                self.app.to_branch.ref(),
-            )
 
     def _create_mig_branch(self):
         create_branch = True
@@ -170,9 +163,7 @@ class MigrateAddon(Output):
                 f"\tCreate branch {bc.BOLD}{self.mig_branch.name}{bc.END} "
                 f"from {self.app.to_branch.ref()}..."
             )
-            self.app.repo.git.checkout(
-                "--no-track", "-b", self.mig_branch.name, self.app.to_branch.ref()
-            )
+        self.mig_branch.checkout(create=create_branch)
         return create_branch
 
     def _generate_patches(self, patches_dir):

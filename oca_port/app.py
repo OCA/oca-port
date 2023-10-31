@@ -148,9 +148,11 @@ class App(Output):
         if self.destination.branch:
             self.dest_branch = self._prepare_branch(self.destination)
 
-    def _prepare_branch(self, info):
+    def _prepare_branch(self, info, base_ref=None):
         try:
-            return Branch(self.repo, info.branch, default_remote=info.remote)
+            return Branch(
+                self.repo, info.branch, base_ref=base_ref, default_remote=info.remote
+            )
         except ValueError as exc:
             remote = exc.args[1]
             if remote not in self.repo.remotes:

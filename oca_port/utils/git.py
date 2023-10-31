@@ -15,18 +15,26 @@ PO_FILE_REGEX = re.compile(r".*i18n/.+\.pot?$")
 
 
 class Branch:
-    def __init__(self, repo, name, default_remote=None, check_remote=True):
+    def __init__(
+        self, repo, name, base_ref=None, default_remote=None, check_remote=True
+    ):
         self.repo = repo
         if len(name.split("/", 1)) > 1:
             remote, name = name.split("/", 1)
         else:
             remote = default_remote
         self.name = name
+        # Handle remote
         self.remote = None
         if remote:
             if check_remote and remote not in repo.remotes:
                 raise ValueError(repo, remote)
             self.remote = remote
+        # Handle base reference:
+        # if no base_ref is provided but the remote branch exists, use this one
+        self.base_ref = base_ref
+        if not self.base_ref and self.remote and self.ref() in self.repo.refs:
+            self.base_ref = self.ref() if self.remote else None
 
     def ref(self):
         ref = self.name
@@ -36,6 +44,18 @@ class Branch:
             if ref_with_remote in self.repo.refs:
                 ref = ref_with_remote
         return ref
+
+    def exists(self):
+        return self.name in self.repo.heads
+
+    def checkout(self, create=False):
+        if self.exists():
+            self.repo.heads[self.name].checkout()
+        elif create:
+            args = ["--no-track", "-b", self.name]
+            if self.base_ref:
+                args.append(self.base_ref)
+            self.repo.git.checkout(*args)
 
 
 class CommitPath(str):
