@@ -72,9 +72,10 @@ class PortAddonPullRequest(Output):
                 if self.app.output:
                     return False, self._render_output(self.app.output, {})
             return False, None
+        dest_branch = self.app._eval_dest_branch()
         self._print(
             f"{bc.BOLD}{self.app.addon}{bc.END} already exists "
-            f"on {bc.BOLD}{self.app.destination.branch}{bc.END}, "
+            f"on {bc.BOLD}{dest_branch.ref()}{bc.END}, "
             "checking PRs to port..."
         )
         branches_diff = BranchesDiff(self.app)
@@ -449,12 +450,11 @@ class BranchesDiff(Output):
         self.from_branch_all_commits, _ = self._get_branch_commits(
             self.app.from_branch.ref()
         )
+        dest_branch = self.app._eval_dest_branch()
         self.dest_branch_path_commits, _ = self._get_branch_commits(
-            self.app.dest_branch.ref(), self.path
+            dest_branch.ref(), self.path
         )
-        self.dest_branch_all_commits, _ = self._get_branch_commits(
-            self.app.dest_branch.ref()
-        )
+        self.dest_branch_all_commits, _ = self._get_branch_commits(dest_branch.ref())
         self.commits_diff = self.get_commits_diff()
         self.serialized_diff = self._serialize_diff(self.commits_diff)
 

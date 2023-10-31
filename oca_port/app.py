@@ -156,6 +156,12 @@ class App(Output):
             if remote not in self.repo.remotes:
                 raise RemoteBranchValueError(info) from exc
 
+    def _eval_dest_branch(self):
+        """Return the destination branch if it exists locally, or fallback on target one."""
+        if self.dest_branch.ref() in self.repo.refs:
+            return self.dest_branch
+        return self.to_branch
+
     def fetch_branches(self):
         for branch in (self.from_branch, self.to_branch):
             if not branch.remote:
