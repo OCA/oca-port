@@ -172,26 +172,26 @@ class App(Output):
         """Run 'oca-port' to migrate an addon or to port its pull requests."""
         self.check_addon_exists_from_branch(raise_exc=True)
         # Check if some PRs could be ported
-        output = self.run_port()
-        if not output:
+        res, output = self.run_port()
+        if not res:
             # If not, migrate the addon
-            output = self.run_migrate()
+            res, output = self.run_migrate()
         if self.cli and self.output:
             if not output:
                 output = self._render_output(self.output, {})
             print(output)
         if self.clear_cache:
             self.cache.clear()
-        return output
+        if self.output:
+            return output
+        return res
 
     def run_port(self):
         """Port pull requests of an addon (if any)."""
         # Check if the addon (folder) exists on the target branch
         #   - if it already exists, check if some PRs could be ported
-        if self.check_addon_exists_to_branch():
-            return PortAddonPullRequest(self).run()
+        return PortAddonPullRequest(self).run()
 
     def run_migrate(self):
         """Migrate an addon."""
-        if not self.check_addon_exists_to_branch():
-            return MigrateAddon(self).run()
+        return MigrateAddon(self).run()
