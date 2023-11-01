@@ -139,14 +139,34 @@ class App(Output):
         self.repo = git.Repo(self.repo_path)
         if self.repo.is_dirty(untracked_files=True):
             raise ValueError("changes not committed detected in this repository.")
-        if self.destination.remote and self.destination.remote not in self.repo.remotes:
-            raise ForkValueError(self.destination)
         # Transform branch strings to Branch objects
         self.from_branch = self._prepare_branch(self.source)
         self.to_branch = self._prepare_branch(self.target)
         self.dest_branch = self.to_branch
-        if self.destination.branch:
-            self.dest_branch = self._prepare_branch(self.destination)
+        # Ensure destination is well configured if we're not in dry-run
+        if not self.dry_run:
+            if (
+                self.destination.remote
+                and self.destination.remote not in self.repo.remotes
+            ):
+                raise ForkValueError(self.destination)
+            if self.destination.branch:
+                self.dest_branch = self._prepare_branch(
+                    self.destination, base_ref=self.to_branch.ref()
+                )
+            # Still, if the destination targets OCA organization, force dry-run mode
+            if self.destination.org == "OCA":
+                self.dry_run = True
+                dev_branch = (
+                    self.destination.branch or f"{self.target.branch}-{self.addon}-port"
+                )
+                self._print(
+                    f"⚠️  Organization of the {bc.BOLD}destination is "
+                    f"OCA{bc.END}, force dry-run mode.\n"
+                    f"Please set {bc.BOLD}--destination{bc.END} parameter to "
+                    f"target your own organization/repository#branch, e.g.:\n"
+                    f"\t--destination my-org/{self.target.repo}#{dev_branch}"
+                )
 
     def _prepare_branch(self, info, base_ref=None):
         try:
