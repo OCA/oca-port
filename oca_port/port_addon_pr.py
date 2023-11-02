@@ -62,6 +62,11 @@ class PortAddonPullRequest(Output):
         self._results = {"process": "port_commits", "results": {}}
 
     def run(self):
+        if not self.app.check_addon_exists_to_branch():
+            if self.app.non_interactive:
+                if self.app.output:
+                    return False, self._render_output(self.app.output, {})
+            return False, None
         self._print(
             f"{bc.BOLD}{self.app.addon}{bc.END} already exists "
             f"on {bc.BOLD}{self.app.to_branch.name}{bc.END}, "
@@ -74,21 +79,21 @@ class PortAddonPullRequest(Output):
                 # If an output is defined we return the result in the expected format
                 if self.app.output:
                     self._results["results"] = branches_diff.serialized_diff
-                    return self._render_output(self.app.output, self._results)
+                    return True, self._render_output(self.app.output, self._results)
                 if self.app.cli:
                     # Exit with an error code if commits are eligible for (back)porting
                     # User-defined exit codes should be defined between 64 and 113.
                     # Allocate 110 for 'PortAddonPullRequest'.
                     raise SystemExit(110)
-                return True
+                return True, None
             if self.app.output:
                 # Nothing to port -> return an empty output
-                return self._render_output(self.app.output, {})
-            return False
+                return False, self._render_output(self.app.output, {})
+            return False, None
         if self.app.fork:
             self._print()
             self._port_pull_requests(branches_diff)
-        return True
+        return True, None
 
     def _port_pull_requests(self, branches_diff):
         """Open new Pull Requests (if it doesn't exist) on the GitHub repository."""
