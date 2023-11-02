@@ -39,6 +39,11 @@ FILES_TO_KEEP = [
     "oca_dependencies.txt",
 ]
 
+BOT_FILES_TO_SKIP = [
+    "README.rst",
+    "static/description/index.html",
+]
+
 # Fake PR for commits w/o any PR (used as fallback)
 FAKE_PR = g.PullRequest(*[""] * 6)
 
@@ -290,6 +295,13 @@ class PortAddonPullRequest(Output):
         if diff.renamed:
             return False, ""
         diff_path = diff.b_path.split("/", maxsplit=1)[0]
+        # Skip diff updating auto-generated files (pre-commit, bot...)
+        if any(file_path in diff_path for file_path in BOT_FILES_TO_SKIP):
+            return (
+                True,
+                f"SKIP: '{diff.change_type} {diff.b_path}' diff relates "
+                "to an auto-generated file, skip to avoid conflict",
+            )
         # Do not accept diff on unported addons
         if (
             not misc.get_manifest_path(diff_path)
