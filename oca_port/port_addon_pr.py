@@ -4,6 +4,7 @@
 import os
 import shutil
 import tempfile
+import uuid
 from collections import defaultdict
 
 import click
@@ -26,7 +27,7 @@ SUMMARY_TERMS_TO_SKIP = [
     "Added translation using Weblate",
 ]
 
-PR_BRANCH_NAME = "oca-port-from-{from_branch}-to-{to_branch}-pr-{pr_number}"
+PR_BRANCH_NAME = "oca-port-from-{from_branch}-to-{to_branch}-{slug}"
 
 FOLDERS_TO_SKIP = [
     "setup",
@@ -104,72 +105,104 @@ class PortAddonPullRequest(Output):
 
     def _port_pull_requests(self, branches_diff):
         """Open new Pull Requests (if it doesn't exist) on the GitHub repository."""
-        base_ref = branches_diff.app.to_branch  # e.g. 'origin/14.0'
-        previous_pr = previous_pr_branch = None
+        # Create a temporary development branch to stack all ported commits.
+        # This branch will be renamed to the expected destination branch at the
+        # end of the process before the user decides to push its work.
+        dev_branch = self._get_dev_branch()
         processed_prs = []
         last_pr = (
             list(branches_diff.commits_diff.keys())[-1]
             if branches_diff.commits_diff
             else None
         )
+        current_commit = self.app.repo.commit(self.app.to_branch.ref())
         for pr, commits in branches_diff.commits_diff.items():
-            current_commit = self.app.repo.commit(self.app.to_branch.ref())
-            pr_branch, based_on_previous = self._port_pull_request_commits(
-                pr,
-                commits,
-                base_ref,
-                previous_pr,
-                previous_pr_branch,
-            )
-            if pr_branch:
-                # Check if commits have been ported.
-                # If none has been ported, blacklist automatically the current PR.
-                if self.app.repo.commit(pr_branch.ref()) == current_commit:
-                    self._print("\tℹ️  Nothing has been ported, skipping")
-                    # Do not ask to blacklist if already blacklisted.
-                    # This might happen when a migration process has been interrupted brutally.
-                    if not self.app.storage.is_pr_blacklisted(pr.ref):
-                        self.app.storage.blacklist_pr(
-                            pr.ref,
-                            confirm=True,
-                            reason=f"(auto) Nothing to port from PR #{pr.ref}",
-                        )
-                        if self.app.storage.dirty:
-                            self.app.storage.commit()
-                        msg = (
-                            f"\t{bc.DIM}PR #{pr.number} has been"
-                            if pr.number
-                            else "Orphaned commits have been"
-                        ) + f" automatically blacklisted{bc.ENDD}"
-                        self._print(msg)
+            pr_processed = self._port_pull_request_commits(pr, commits, dev_branch)
+            # Check if commits have been ported.
+            # If none has been ported, blacklist automatically the current PR.
+            no_new_commit = self.app.repo.commit(dev_branch.ref()) == current_commit
+            if pr_processed:
+                if no_new_commit:
+                    self._blacklist_pr(pr)
                     continue
-                previous_pr = pr
-                previous_pr_branch = pr_branch
-                if based_on_previous:
-                    processed_prs.append(pr)
-                else:
-                    processed_prs = [pr]
+                processed_prs.append(pr)
                 is_last = pr == last_pr
                 if is_last:
                     self._print("\t🎉 Last PR processed! 🎉")
-                is_pushed = self._push_branch_to_remote(pr_branch, is_last=is_last)
-                if not is_pushed:
-                    continue
-                pr_data = self._prepare_pull_request_data(processed_prs, pr_branch)
-                pr_url = self._search_pull_request(pr_data["base"], pr_data["title"])
-                if pr_url:
-                    self._print(f"\tExisting PR has been refreshed => {pr_url}")
-                else:
-                    self._create_pull_request(pr_branch, pr_data, processed_prs)
+        if not pr_processed:
+            self._print("⚠️  Nothing has been ported")
+        dest_branch = self._create_dest_branch(dev_branch, processed_prs)
+        is_pushed = self._push_branch_to_remote(dest_branch)
+        if not is_pushed:
+            return
+        pr_data = self._prepare_pull_request_data(processed_prs, dest_branch)
+        pr_url = self._search_pull_request(pr_data["base"], pr_data["title"])
+        if pr_url:
+            self._print(f"\tExisting PR has been refreshed => {pr_url}")
+        else:
+            self._create_pull_request(dest_branch, pr_data, processed_prs)
 
-    def _port_pull_request_commits(
-        self,
-        pr,
-        commits,
-        base_ref,
-        previous_pr=None,
-        previous_pr_branch=None,
-    ):
+    def _get_dev_branch(self):
+        """Return the development branch to stack ported commits.
+
+        Create one if needed.
+        """
+        # Stay on the current branch if coming from MigrateAddon
+        if not self.create_branch:
+            branch_name = self.app.repo.active_branch.name
+            if self.app.verbose:
+                self._print(
+                    f"Starting from existing branch {bc.BOLD}{branch_name}{bc.END}...\n"
+                )
+            return g.Branch(self.app.repo, branch_name)
+        # Create one on the fly
+        slug = "dev-" + str(uuid.uuid4()).split("-")[0]
+        branch_name = PR_BRANCH_NAME.format(
+            from_branch=self.app.from_branch.name,
+            to_branch=self.app.to_branch.name,
+            slug=slug,
+        )
+        base_ref = self.app.to_branch.ref()
+        branch = g.Branch(self.app.repo, branch_name, base_ref=base_ref)
+        if self.app.verbose:
+            self._print(
+                f"Creating development branch {bc.BOLD}{branch.name}{bc.END} "
+                f"from {base_ref}...\n"
+            )
+        branch.checkout(create=True)
+        return branch
+
+    def _create_dest_branch(self, dev_branch, processed_prs):
+        """Create the destination branch.
+
+        If a destination branch name is not provided, one will be created based
+        on the processed PRs.
+        """
+        branch_name = self.app.destination.branch
+        if not branch_name:
+            pr_numbers = [str(pr.number) for pr in processed_prs]
+            slug = "-".join(pr_numbers) or "misc"
+            branch_name = PR_BRANCH_NAME.format(
+                from_branch=self.app.from_branch.name,
+                to_branch=self.app.to_branch.name,
+                slug=slug,
+            )
+        if branch_name in self.app.repo.heads:
+            msg = (
+                f"Branch {bc.BOLD}{branch_name}{bc.END} already exists. "
+                "Validate to override existing branch or change its name.\n"
+            )
+            new_branch_name = click.prompt(msg, default=branch_name)
+            if new_branch_name == branch_name:
+                self.app.repo.delete_head(branch_name, "-f")
+            branch_name = new_branch_name
+        git_branch = self.app.repo.heads[dev_branch.ref()]
+        git_branch.rename(branch_name)
+        self.app.destination["branch"] = branch_name
+        dest_branch = self.app._prepare_branch(self.app.destination)
+        return dest_branch
+
+    def _port_pull_request_commits(self, pr, commits, dev_branch):
         """Port commits of a Pull Request in a new branch."""
         if pr.number:
             self._print(
@@ -179,28 +212,16 @@ class PortAddonPullRequest(Output):
             self._print(f"\t{pr.url}")
         else:
             self._print(f"- {bc.BOLD}{bc.OKCYAN}Port commits w/o PR{bc.END}...")
-        based_on_previous = False
-        # Ensure we have a local checkout of the target branch
-        self.app.to_branch.checkout(create=True)
         # Ask the user if he wants to port the PR (or orphaned commits)
         if not click.confirm("\tPort it?" if pr.number else "\tPort them?"):
             self.app.storage.blacklist_pr(pr.ref, confirm=True)
             if not self.app.storage.dirty:
-                return None, based_on_previous
-        # Create a local branch based on upstream
-        if self.create_branch:
-            branch_name, based_on_previous = self._create_branch(
-                pr,
-                base_ref,
-                previous_pr=previous_pr,
-                previous_pr_branch=previous_pr_branch,
-                based_on_previous=based_on_previous,
-            )
+                # PR hasn't been blacklisted
+                return False
         # If the PR has been blacklisted we need to commit this information
         if self.app.storage.dirty:
             self.app.storage.commit()
-            return g.Branch(self.app.repo, branch_name), based_on_previous
-
+            return True
         # Cherry-pick commits of the source PR
         for commit in commits:
             self._print(
@@ -248,57 +269,26 @@ class PortAddonPullRequest(Output):
                 ):
                     self.app.repo.git.am("--abort")
                     continue
-        return g.Branch(self.app.repo, branch_name), based_on_previous
+        return True
 
-    def _create_branch(
-        self,
-        pr,
-        base_ref,
-        previous_pr=None,
-        previous_pr_branch=False,
-        based_on_previous=False,
-    ):
-        if not self.app.destination.branch:
-            self.app.destination["branch"] = PR_BRANCH_NAME.format(
-                from_branch=self.app.from_branch.name,
-                to_branch=self.app.to_branch.name,
-                pr_number=pr.number,
+    def _blacklist_pr(self, pr):
+        self._print("\tℹ️  Nothing has been ported, skipping")
+        # Do not ask to blacklist if already blacklisted.
+        # This might happen when a migration process has been interrupted brutally.
+        if not self.app.storage.is_pr_blacklisted(pr.ref):
+            self.app.storage.blacklist_pr(
+                pr.ref,
+                confirm=True,
+                reason=f"(auto) Nothing to port from PR #{pr.ref}",
             )
-        dest_branch = self.app.dest_branch
-        if dest_branch.exists():
-            if self.app.destination.skip_recreate:
-                self._print("\tSkip branch recreate flag ON")
-                dest_branch.checkout()
-                return dest_branch.name, based_on_previous
-            # If the local branch already exists, ask the user if he wants
-            # to recreate it + check if this existing branch is based on
-            # the previous PR branch
-            if previous_pr_branch:
-                based_on_previous = self.app.repo.is_ancestor(
-                    previous_pr_branch.name, dest_branch.name
-                )
-            confirm = (
-                f"\tBranch {bc.BOLD}{dest_branch.name}{bc.END} already exists, "
-                "recreate it?\n\t(⚠️  you will lose the existing branch)"
-            )
-            if not click.confirm(confirm):
-                return dest_branch.name, based_on_previous
-            self.app.repo.delete_head(dest_branch.name, "-f")
-        if previous_pr and click.confirm(
-            f"\tUse the previous {bc.BOLD}PR #{previous_pr.number}{bc.END} "
-            "branch as base?"
-        ):
-            base_ref = previous_pr_branch
-            based_on_previous = True
-            # Set the new branch name the same than the previous one
-            # but with the PR number as suffix.
-            branch_name = f"{previous_pr_branch.name}-{pr.number}"
-            dest_branch = g.Branch(self.app.repo, branch_name)
-        self._print(
-            f"\tCreate branch {bc.BOLD}{dest_branch.name}{bc.END} from {base_ref.ref()}..."
-        )
-        dest_branch.checkout(create=True)
-        return dest_branch.name, based_on_previous
+            if self.app.storage.dirty:
+                self.app.storage.commit()
+            msg = (
+                f"\t{bc.DIM}PR #{pr.number} has been"
+                if pr.number
+                else "Orphaned commits have been"
+            ) + f" automatically blacklisted{bc.ENDD}"
+            self._print(msg)
 
     @staticmethod
     def _skip_diff(commit, diff):
@@ -353,7 +343,7 @@ class PortAddonPullRequest(Output):
         if not self.push_branch or self.app.push_only_when_done and not is_last:
             return False
         confirm = (
-            f"\tPush branch '{bc.BOLD}{branch.name}{bc.END}' "
+            f"Push branch '{bc.BOLD}{branch.name}{bc.END}' "
             f"to remote '{bc.BOLD}{self.app.destination.remote}{bc.END}'?"
         )
         if click.confirm(confirm):
@@ -409,13 +399,13 @@ class PortAddonPullRequest(Output):
     def _create_pull_request(self, pr_branch, pr_data, processed_prs):
         if len(processed_prs) > 1:
             self._print(
-                "\tPR(s) ported locally:",
+                "PR(s) ported locally:",
                 ", ".join(
                     [f"{bc.OKCYAN}#{pr.number}{bc.ENDC}" for pr in processed_prs]
                 ),
             )
         if click.confirm(
-            f"\tCreate a draft PR from '{bc.BOLD}{pr_branch.name}{bc.END}' "
+            f"Create a draft PR from '{bc.BOLD}{pr_branch.name}{bc.END}' "
             f"to '{bc.BOLD}{self.app.to_branch.name}{bc.END}' "
             f"against {bc.BOLD}{self.app.source.org}/{self.app.repo_name}{bc.END}?"
         ):
@@ -426,7 +416,7 @@ class PortAddonPullRequest(Output):
             )
             pr_url = response["html_url"]
             self._print(
-                f"\t\t{bc.BOLD}{bc.OKCYAN}PR created =>" f"{bc.ENDC} {pr_url}{bc.END}"
+                f"\t{bc.BOLD}{bc.OKCYAN}PR created =>" f"{bc.ENDC} {pr_url}{bc.END}"
             )
             return pr_url
 
