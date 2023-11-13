@@ -10,7 +10,6 @@ import git
 
 
 class CommonCase(unittest.TestCase):
-
     _settings = {
         "branch1": "15.0",
         "remote_branch1": "origin/15.0",

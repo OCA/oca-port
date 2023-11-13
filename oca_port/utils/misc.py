@@ -70,7 +70,7 @@ class SmartDict(dict):
 
     def __getattr__(self, attrib):
         val = self.get(attrib)
-        return self.__class__(val) if type(val) is dict else val
+        return self.__class__(val) if isinstance(val, dict) else val
 
 
 REF_REGEX = r"((?P<org>[\w-]+)/)?((?P<repo>[\w-]+)#)?(?P<branch>.*)"
