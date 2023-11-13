@@ -3,8 +3,12 @@
 
 
 class ForkValueError(ValueError):
-    pass
+    def __init__(self, entity):
+        super().__init__(entity._ref)
+        self.entity = entity
 
 
 class RemoteBranchValueError(ValueError):
-    pass
+    def __init__(self, entity):
+        super().__init__(entity._ref)
+        self.entity = entity

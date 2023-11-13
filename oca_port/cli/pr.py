@@ -44,8 +44,6 @@ def blacklist(
 
     # TODO: we assume you are in the right repo folder when you run this
     repo = git.Repo(os.getcwd())
-    if repo.is_dirty(untracked_files=True):
-        raise ValueError("changes not committed detected in this repository.")
     # Transform branch strings to Branch objects
     try:
         branch = Branch(repo, target_branch, default_remote=remote)
