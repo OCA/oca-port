@@ -21,4 +21,4 @@ jobs:
           git config --global user.email "oca-port@example.com"
           git config --global user.name "oca-port-test"
       - name: Run tests
-        run: coverage run -m pytest -v tests && coverage report -m
+        run: coverage run -m pytest -v oca_port/tests && coverage report -m
