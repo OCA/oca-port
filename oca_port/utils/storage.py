@@ -3,6 +3,7 @@
 
 import json
 import os
+import pathlib
 from collections import defaultdict
 
 import click
@@ -34,15 +35,26 @@ class InputStorage:
         }
     """
 
+    __slots__ = (
+        "to_branch",
+        "repo",
+        "root_path",
+        "addon",
+        "dirty",
+        "ensure_storage_committed",
+        "_data",
+        "_is_staged",
+    )
+
     storage_dirname = ".oca/oca-port"
 
     def __init__(self, to_branch, addon):
         self.to_branch = to_branch
         self.repo = self.to_branch.repo
-        self.root_path = self.repo.working_dir
+        self.root_path = pathlib.Path(self.repo.working_dir)
         self.addon = addon
-        self._data = self._get_data()
         self.dirty = False
+        self._data, self._is_staged = self._get_data()
 
     def _get_data(self):
         """Return the data of the current repository.
@@ -50,33 +62,55 @@ class InputStorage:
         If a JSON file is found, return its content, otherwise return an empty
         dictionary.
         """
+        # Read the JSON file from 'to_branch'
+        is_staged = False
         try:
-            # Read the JSON file from 'to_branch'
+            # This is important because the analysis of the branch
+            # can be done on non-checked out branches
+            # and we still want to read the file from there.
             tree = self.repo.commit(self.to_branch.ref()).tree
+            # When the file is not there, this throws a KeyError
             blob = tree / self.storage_dirname / "blacklist" / f"{self.addon}.json"
             content = blob.data_stream.read().decode()
-            return json.loads(content, object_hook=misc.defaultdict_from_dict)
+            is_staged = True
         except KeyError:
-            if os.getenv("BLACKLIST_FILE"):
-                with open(os.getenv("BLACKLIST_FILE")) as fd:
-                    return json.loads(fd.read(), object_hook=misc.defaultdict_from_dict)
-            nested_dict = lambda: defaultdict(nested_dict)  # noqa
-            return nested_dict()
+            # We might have a local path not committed
+            path = self._get_file_path()
+            if not path:
+                return self._get_default_data(), is_staged
+            with path.open() as fd:
+                content = fd.read() or "{}"
+        return json.loads(content, object_hook=misc.defaultdict_from_dict), is_staged
+
+    def _get_default_data(self):
+        nested_dict = lambda: defaultdict(nested_dict)  # noqa
+        return nested_dict()
 
     def save(self):
         """Store the data at the root of the current repository."""
         if not self._data or not self.dirty:
             return False
-        file_path = self._get_file_path()
+        file_path = self._get_file_path(ignore_missing=True)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "w") as file_:
             json.dump(self._data, file_, indent=2)
         return True
 
-    def _get_file_path(self):
-        return os.path.join(
-            self.root_path, self.storage_dirname, "blacklist", f"{self.addon}.json"
+    def _get_file_path(self, ignore_missing=False):
+        override = self._get_file_path_override()
+        if override:
+            return override
+        filepath = (
+            self.root_path / self.storage_dirname / "blacklist" / f"{self.addon}.json"
         )
+        if ignore_missing:
+            return filepath
+        if filepath.exists():
+            return filepath
+
+    def _get_file_path_override(self):
+        if os.getenv("BLACKLIST_FILE"):
+            return pathlib.Path(os.getenv("BLACKLIST_FILE"))
 
     def is_pr_blacklisted(self, pr_ref):
         pr_ref = str(pr_ref or "orphaned_commits")
@@ -108,6 +142,9 @@ class InputStorage:
     def commit(self, msg=None):
         """Commit all files contained in the storage directory."""
         if not self.save():
+            return
+        if not self._is_staged:
+            # Likely a custom non staged file is used
             return
         changed_paths = g.get_changed_paths(self.repo)
         all_in_storage = all(
