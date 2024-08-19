@@ -58,9 +58,10 @@ class Commit:
     other_equality_attrs = ("paths",)
     eq_strict = True
 
-    def __init__(self, commit):
+    def __init__(self, commit, cache=None):
         """Initializes a new Commit instance from a GitPython Commit object."""
         self.raw_commit = commit
+        self.cache = cache
         self.author_name = commit.author.name
         self.author_email = commit.author.email
         self.authored_datetime = commit.authored_datetime.replace(
@@ -71,9 +72,44 @@ class Commit:
         self.hexsha = commit.hexsha
         self.committed_datetime = commit.committed_datetime.replace(tzinfo=None)
         self.parents = [parent.hexsha for parent in commit.parents]
-        self.files = {f for f in set(commit.stats.files.keys()) if "=>" not in f}
-        self.paths = {CommitPath(f) for f in self.files}
+        self._files = set()
+        self._paths = set()
         self.ported_commits = []
+
+    @property
+    def files(self):
+        """Returns modified file paths."""
+        # Access git storage or cache only on demand to avoid too much IO
+        files = self._get_files()
+        if not self._files:
+            self._files = files
+        return self._files
+
+    @property
+    def paths(self):
+        """Returns list of `CommitPath` objects."""
+        # Access git storage or cache only on demand to avoid too much IO
+        paths = {CommitPath(f) for f in self.files}
+        if not self._paths:
+            self._paths = paths
+        return self._paths
+
+    def _get_files(self):
+        """Retrieve file paths modified by this commit.
+
+        Leverage the user's cache if one is provided as git can be quite slow
+        to retrieve such data from big repository.
+        """
+        files = set()
+        if self.cache:
+            files = self.cache.get_commit_files(self.hexsha)
+        if not files:
+            files = {
+                f for f in set(self.raw_commit.stats.files.keys()) if "=>" not in f
+            }
+            if self.cache:
+                self.cache.set_commit_files(self.hexsha, files)
+        return files
 
     def _get_equality_attrs(self):
         return [attr for attr in self.base_equality_attrs if hasattr(self, attr)] + [
