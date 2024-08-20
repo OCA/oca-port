@@ -428,6 +428,8 @@ class BranchesDiff(Output):
         )
         self.commits_diff = self.get_commits_diff()
         self.serialized_diff = self._serialize_diff(self.commits_diff)
+        # Once the analyze is done, we store the cache on disk
+        self.app.cache.save()
 
     def _serialize_diff(self, commits_diff):
         data = {}
@@ -453,7 +455,7 @@ class BranchesDiff(Output):
         for commit in commits:
             if self.app.cache.is_commit_ported(commit.hexsha):
                 continue
-            com = g.Commit(commit)
+            com = g.Commit(commit, cache=self.app.cache)
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
@@ -551,7 +553,7 @@ class BranchesDiff(Output):
                         # Ignore commits referenced by a PR but not present
                         # in the stable branches
                         continue
-                    pr_commit = g.Commit(raw_commit)
+                    pr_commit = g.Commit(raw_commit, cache=self.app.cache)
                     if self._skip_commit(pr_commit):
                         continue
                     pr_commit_paths = {

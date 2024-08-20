@@ -62,6 +62,18 @@ class NoCache:
         # No PR data to return
         return {}
 
+    def get_commit_files(self, commit_sha: str):
+        # No commit files to return
+        return set()
+
+    def set_commit_files(self, commit_sha: str, files: list):
+        # Do nothing
+        pass
+
+    def save(self):
+        # Do nothing
+        pass
+
     def clear(self):
         # Do nothing
         pass
@@ -79,6 +91,7 @@ class UserCache:
     _cache_dirname = "oca-port"
     _ported_dirname = "ported"
     _to_port_dirname = "to_port"
+    _commits_data_dirname = "commits_data"
 
     def __init__(self, app):
         """Initialize user's cache manager."""
@@ -88,6 +101,8 @@ class UserCache:
         self._ported_commits = self._get_ported_commits()
         self._commits_to_port_path = self._get_commits_to_port_path()
         self._commits_to_port = self._get_commits_to_port()
+        self._commits_data_path = self._get_commits_data_path()
+        self._commits_data = self._get_commits_data()
 
     @classmethod
     def _get_dir_path(cls):
@@ -123,6 +138,15 @@ class UserCache:
             file_name,
         )
 
+    def _get_commits_data_path(self):
+        """Return the file path storing commits cached data."""
+        file_name = f"{self.app.repo_name}.json"
+        return self.dir_path.joinpath(
+            self._commits_data_dirname,
+            self.app.from_org,
+            file_name,
+        )
+
     def _get_ported_commits(self):
         self._ported_commits_path.parent.mkdir(parents=True, exist_ok=True)
         self._ported_commits_path.touch(exist_ok=True)
@@ -133,6 +157,19 @@ class UserCache:
         self._commits_to_port_path.touch(exist_ok=True)
         try:
             with self._commits_to_port_path.open() as file_:
+                return json.load(file_, object_hook=misc.defaultdict_from_dict)
+        except json.JSONDecodeError:
+            # Mainly to handle empty files (first initialization of the cache)
+            # but also to not crash if JSON files get corrupted.
+            # Returns a "nested dict" object to not worry about checking keys
+            nested_dict = lambda: defaultdict(nested_dict)  # noqa
+            return nested_dict()
+
+    def _get_commits_data(self):
+        self._commits_data_path.parent.mkdir(parents=True, exist_ok=True)
+        self._commits_data_path.touch(exist_ok=True)
+        try:
+            with self._commits_data_path.open() as file_:
                 return json.load(file_, object_hook=misc.defaultdict_from_dict)
         except json.JSONDecodeError:
             # Mainly to handle empty files (first initialization of the cache)
@@ -158,11 +195,6 @@ class UserCache:
         pr_number = data["number"]
         self._commits_to_port["pull_requests"][str(pr_number)] = data
         self._commits_to_port["commits"][commit_sha]["pr"] = pr_number
-        try:
-            with self._commits_to_port_path.open(mode="w") as file_:
-                json.dump(self._commits_to_port, file_, indent=2)
-        except Exception:
-            pass
 
     def get_pr_from_commit(self, commit_sha: str):
         """Return the original PR data of a commit."""
@@ -170,6 +202,28 @@ class UserCache:
         if pr_number:
             return self._commits_to_port["pull_requests"][str(pr_number)]
         return {}
+
+    def get_commit_files(self, commit_sha: str):
+        """Return file paths modified by a commit."""
+        return self._commits_data[commit_sha].get("files", set())
+
+    def set_commit_files(self, commit_sha: str, files: list):
+        """Set file paths modified by a commit."""
+        self._commits_data[commit_sha]["files"] = list(files)
+
+    def save(self):
+        """Save cache files."""
+        # commits/PRs to port
+        self._save_cache(self._commits_to_port, self._commits_to_port_path)
+        # commits data file
+        self._save_cache(self._commits_data, self._commits_data_path)
+
+    def _save_cache(self, cache, path):
+        try:
+            with path.open(mode="w") as file_:
+                json.dump(cache, file_, indent=2)
+        except Exception:
+            pass
 
     def clear(self):
         """Clear the cache by removing the content of the cache directory."""

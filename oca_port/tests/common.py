@@ -6,6 +6,8 @@ import time
 import unittest
 from unittest.mock import patch
 
+from oca_port.app import App
+
 import git
 
 
@@ -102,6 +104,21 @@ class CommonCase(unittest.TestCase):
         repo.index.add(self.manifest_path)
         commit = repo.index.commit(f"[FIX] {self._settings['addon']}: fix dependency")
         return commit.hexsha
+
+    def _create_app(self, from_branch, to_branch, **kwargs):
+        params = {
+            "from_branch": from_branch,
+            "to_branch": to_branch,
+            "addon": self._settings["addon"],
+            "from_org": self._settings["from_org"],
+            "from_remote": self._settings["from_remote"],
+            "repo_path": self.repo_path,
+            "repo_name": "test",
+            "user_org": self._settings["user_org"],
+            "no_cache": self._settings["no_cache"],
+        }
+        params.update(kwargs)
+        return App(**params)
 
     def tearDown(self):
         # Clean up the Git repository
