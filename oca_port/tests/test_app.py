@@ -1,26 +1,9 @@
 import json
 
-from oca_port.app import App
-
 from . import common
 
 
 class TestApp(common.CommonCase):
-    def _create_app(self, from_branch, to_branch, **kwargs):
-        params = {
-            "from_branch": from_branch,
-            "to_branch": to_branch,
-            "addon": self._settings["addon"],
-            "from_org": self._settings["from_org"],
-            "from_remote": self._settings["from_remote"],
-            "repo_path": self.repo_path,
-            "repo_name": "test",
-            "user_org": self._settings["user_org"],
-            "no_cache": self._settings["no_cache"],
-        }
-        params.update(kwargs)
-        return App(**params)
-
     def test_app_nothing_to_port(self):
         app = self._create_app(
             self._settings["remote_branch1"], self._settings["remote_branch2"]
