@@ -15,6 +15,15 @@ class TestUserCache(common.CommonCase):
             from_org="TEST",
         )
         self.cache = cache.UserCache(app)
+        # As source branch as no organization, cache is by default readonly.
+        # Unset this to run tests.
+        self.cache.readonly = False
+        # Clear the cache before each test
+        self.cache.clear()
+
+    def tearDown(self):
+        # Clear the cache after each test
+        self.cache.clear()
 
     def test_commit_ported(self):
         sha = "TEST"

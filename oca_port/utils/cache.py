@@ -83,7 +83,8 @@ class UserCache:
     """Manage the user's cache, in respect to XDG conventions.
 
     This class manages the following data:
-        - a list of already ported commits from one branch to another.
+        - a list of already ported commits from one branch to another
+        - some commits data like impacted file paths
 
     It allows to speed up further commit scans on a given module.
     """
@@ -226,6 +227,12 @@ class UserCache:
             pass
 
     def clear(self):
-        """Clear the cache by removing the content of the cache directory."""
-        if self._cache_dirname and str(self.dir_path).endswith(self._cache_dirname):
-            shutil.rmtree(self.dir_path)
+        """Clear the cache files."""
+        paths = [
+            self._ported_commits_path,
+            self._commits_to_port_path,
+            self._commits_data_path,
+        ]
+        for path in paths:
+            if path and path.exists():
+                path.unlink()
