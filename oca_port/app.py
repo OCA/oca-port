@@ -194,6 +194,48 @@ class App(Output):
         if self.destination.branch:
             self.dest_branch = self._prepare_branch(self.destination)
 
+        # Print a warning if the repository in the destination remote URL differs
+        # from the repository of the target as we probably want to push under the
+        # same repository name.
+        fishy_parameters = False
+        if not self.dry_run and self.destination.remote and self.target.repo:
+            dest_remote_url = self.repo.remotes[self.destination.remote].url
+            if self.target.repo not in dest_remote_url:
+                fishy_parameters = True
+                self._print(
+                    "⚠️  Destination repository does not match the target. "
+                    "Destination remote is perhaps not the right one."
+                )
+        # Print a summary of source/target/destination
+        if self.verbose or fishy_parameters:
+            source_remote_url = (
+                self.repo.remotes[self.source.remote].url if self.source.remote else ""
+            )
+            msg = f"{bc.BOLD}Source{bc.END}: {self.source.ref}"
+            if source_remote_url:
+                msg += f", remote {bc.BOLD}{self.source.remote} {source_remote_url}{bc.END}"
+            self._print(msg)
+            target_remote_url = (
+                self.repo.remotes[self.target.remote].url if self.target.remote else ""
+            )
+            msg = f"{bc.BOLD}Target{bc.END}: {self.target.ref}"
+            if target_remote_url:
+                msg += f", remote {bc.BOLD}{self.target.remote} {target_remote_url}{bc.END}"
+            self._print(msg)
+            if not self.dry_run:
+                dest_remote_url = (
+                    self.repo.remotes[self.destination.remote].url
+                    if self.destination.remote
+                    else ""
+                )
+                msg = f"{bc.BOLD}Destination{bc.END}: {self.destination.ref}"
+                if dest_remote_url:
+                    msg += (
+                        f", remote {bc.BOLD}{self.destination.remote} "
+                        f"{dest_remote_url}{bc.END}"
+                    )
+                self._print(msg)
+
     def _prepare_branch(self, info):
         try:
             return Branch(self.repo, info.branch, default_remote=info.remote)
