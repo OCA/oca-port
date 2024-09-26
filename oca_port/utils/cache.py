@@ -221,13 +221,25 @@ class UserCache:
         if self.readonly:
             return
         self._commits_data[commit_sha]["files"] = list(files)
+        if os.environ.get("OCA_PORT_AGRESSIVE_CACHE_WRITE"):
+            # IO can be very slow on some filesystems (like checking modified
+            # paths of a commit), and saving the cache on each analyzed commit
+            # could help in case current oca-port process is killed before
+            # writing its cache on disk, so the next call will be faster.
+            self._save_commits_data()
 
     def save(self):
         """Save cache files."""
         if self.readonly:
             return
+        self._save_commits_to_port()
+        self._save_commits_data()
+
+    def _save_commits_to_port(self):
         # commits/PRs to port
         self._save_cache(self._commits_to_port, self._commits_to_port_path)
+
+    def _save_commits_data(self):
         # commits data file
         self._save_cache(self._commits_data, self._commits_data_path)
 
