@@ -607,7 +607,7 @@ class BranchesDiff(Output):
 
     def __init__(self, app):
         self.app = app
-        self.path = self.app.addon
+        self.path = self.app.addon_path
         self.from_branch_path_commits, _ = self._get_branch_commits(
             self.app.from_branch.ref(), self.path
         )
@@ -649,7 +649,9 @@ class BranchesDiff(Output):
         for commit in commits:
             if self.app.cache.is_commit_ported(commit.hexsha):
                 continue
-            com = g.Commit(commit, cache=self.app.cache)
+            com = g.Commit(
+                commit, addons_path=self.app.addons_rootdir, cache=self.app.cache
+            )
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
@@ -751,7 +753,11 @@ class BranchesDiff(Output):
                         # Ignore commits referenced by a PR but not present
                         # in the stable branches
                         continue
-                    pr_commit = g.Commit(raw_commit, cache=self.app.cache)
+                    pr_commit = g.Commit(
+                        raw_commit,
+                        addons_path=self.app.addons_rootdir,
+                        cache=self.app.cache,
+                    )
                     if self._skip_commit(pr_commit):
                         continue
                     pr_commit_paths = {

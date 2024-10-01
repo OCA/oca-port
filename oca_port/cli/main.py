@@ -62,7 +62,7 @@ from ..utils.misc import bcolors as bc
 @click.command()
 @click.argument("source", required=True)
 @click.argument("target", required=True)
-@click.argument("addon", required=True)
+@click.argument("addon_path", required=True)
 @click.option(
     "--destination",
     help=("Git reference where work will be pushed, e.g. 'camptocamp/16.0-dev'."),
@@ -99,7 +99,7 @@ from ..utils.misc import bcolors as bc
 @click.option("--no-cache", is_flag=True, help="Disable user's cache.")
 @click.option("--clear-cache", is_flag=True, help="Clear the user's cache.")
 def main(
-    addon: str,
+    addon_path: str,
     source: str,
     target: str,
     destination: str,
@@ -132,7 +132,7 @@ def main(
     """
     try:
         app = App(
-            addon=addon,
+            addon_path=addon_path,
             source=source,
             target=target,
             destination=destination,
