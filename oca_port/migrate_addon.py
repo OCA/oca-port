@@ -4,6 +4,7 @@
 import os
 import tempfile
 import urllib.parse
+import pkg_resources
 
 import click
 
@@ -52,6 +53,15 @@ BLACKLIST_TIPS = "\n".join(
             "\t\t$ git push {remote} {mig_branch} --set-upstream"
             f"{bc.END}"
         ),
+        "\t2) Create the PR against {from_org}/{repo_name}:",
+        f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
+    ]
+)
+SIMPLIFIED_MIG_TIPS = "\n".join(
+    [
+        f"\n{bc.BOLD}{bc.OKCYAN}The next steps are:{bc.END}",
+        ("\t1) Reduce the number of commits " f"('{bc.DIM}OCA Transbot...{bc.END}'):"),
+        f"\t\t=> {bc.BOLD}{MIG_MERGE_COMMITS_URL}{bc.END}",
         "\t2) Create the PR against {from_org}/{repo_name}:",
         f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
     ]
@@ -131,6 +141,7 @@ class MigrateAddon(Output):
         if self.app.repo.untracked_files:
             raise click.ClickException("Untracked files detected, abort")
         self._checkout_base_branch()
+        adapted = False
         if self._create_mig_branch():
             # Case where the addon shouldn't be ported (blacklisted)
             if self.app.storage.dirty:
@@ -140,11 +151,14 @@ class MigrateAddon(Output):
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
-            g.run_pre_commit(self.app.repo, self.app.addon)
+            if pkg_resources.get_distribution("odoo-module-migrator") is None:
+                g.run_pre_commit(self.app.repo, self.app.addon)
+            else:
+                adapted = self._apply_code_pattern()
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(self.app, push_branch=False).run()
-        self._print_tips()
+        self._print_tips(adapted=adapted)
         return True, None
 
     def _checkout_base_branch(self):
@@ -204,7 +218,7 @@ class MigrateAddon(Output):
             f"has been migrated."
         )
 
-    def _print_tips(self, blacklisted=False):
+    def _print_tips(self, blacklisted=False, adapted=False):
         mig_tasks_url = MIG_TASKS_URL.format(version=self.app.target_version)
         pr_title_encoded = urllib.parse.quote(
             MIG_NEW_PR_TITLE.format(
@@ -229,6 +243,14 @@ class MigrateAddon(Output):
             )
             print(tips)
             return
+        if adapted:
+            tips = SIMPLIFIED_MIG_TIPS.format(
+                from_org=self.app.upstream_org,
+                repo_name=self.app.repo_name,
+                new_pr_url=new_pr_url,
+            )
+            print(tips)
+            return
         tips = MIG_TIPS.format(
             from_org=self.app.upstream_org,
             repo_name=self.app.repo_name,
@@ -240,3 +262,19 @@ class MigrateAddon(Output):
             new_pr_url=new_pr_url,
         )
         print(tips)
+
+    def _apply_code_pattern(self):
+        print("Apply code pattern...")
+        from odoo_module_migrate.migration import Migration
+
+        try:
+            migration = Migration(
+                self.app.addons_rootdir,
+                self.app.source_version,
+                self.app.target_version,
+                [self.app.addon],
+            )
+            migration.run()
+            return True
+        except KeyboardInterrupt:
+            pass
