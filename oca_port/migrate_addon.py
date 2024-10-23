@@ -189,7 +189,7 @@ class MigrateAddon(Output):
             patches_dir,
             f"{self.app.to_branch.ref()}..{self.app.from_branch.ref()}",
             "--",
-            self.app.addon,
+            self.app.addon_path,
         )
 
     def _apply_patches(self, patches_dir):

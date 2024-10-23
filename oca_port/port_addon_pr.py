@@ -11,6 +11,7 @@ from collections import defaultdict
 
 import click
 import git
+import requests
 
 from .utils import git as g, misc
 from .utils.session import Session
@@ -607,7 +608,7 @@ class BranchesDiff(Output):
 
     def __init__(self, app):
         self.app = app
-        self.path = self.app.addon
+        self.path = self.app.addon_path
         self.from_branch_path_commits, _ = self._get_branch_commits(
             self.app.from_branch.ref(), self.path
         )
@@ -649,7 +650,9 @@ class BranchesDiff(Output):
         for commit in commits:
             if self.app.cache.is_commit_ported(commit.hexsha):
                 continue
-            com = g.Commit(commit, cache=self.app.cache)
+            com = g.Commit(
+                commit, addons_path=self.app.addons_rootdir, cache=self.app.cache
+            )
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
@@ -751,7 +754,11 @@ class BranchesDiff(Output):
                         # Ignore commits referenced by a PR but not present
                         # in the stable branches
                         continue
-                    pr_commit = g.Commit(raw_commit, cache=self.app.cache)
+                    pr_commit = g.Commit(
+                        raw_commit,
+                        addons_path=self.app.addons_rootdir,
+                        cache=self.app.cache,
+                    )
                     if self._skip_commit(pr_commit):
                         continue
                     pr_commit_paths = {
@@ -839,12 +846,16 @@ class BranchesDiff(Output):
         # Request GitHub to get them
         if not any("github.com" in remote.url for remote in self.app.repo.remotes):
             return
-        raw_data = self.app.github.get_original_pr(
-            self.app.upstream_org,
-            self.app.repo_name,
-            self.app.from_branch.name,
-            commit.hexsha,
-        )
+        try:
+            raw_data = self.app.github.get_original_pr(
+                self.app.upstream_org,
+                self.app.repo_name,
+                self.app.from_branch.name,
+                commit.hexsha,
+            )
+        except requests.exceptions.ConnectionError:
+            self._print("⚠️  Unable to detect original PR (connection error)")
+            return
         if raw_data:
             # Get all commits of the PR as they could update others addons
             # than the one the user is interested in.

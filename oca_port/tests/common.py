@@ -115,7 +115,7 @@ class CommonCase(unittest.TestCase):
             "source": source,
             "target": target,
             "destination": destination,
-            "addon": self.addon,
+            "addon_path": self.addon,
             "source_version": None,
             "target_version": None,
             "repo_path": self.repo_path,

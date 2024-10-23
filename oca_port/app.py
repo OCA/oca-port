@@ -26,8 +26,8 @@ class App(Output):
             string representation of the source branch, e.g. 'origin/15.0'
         target:
             string representation of the target branch, e.g. 'origin/16.0'
-        addon:
-            the name of the module to process
+        addon_path:
+            the path of the addon to process
         destination:
             string representation of the destination branch,
             e.g. 'camptocamp/16.0-addon-dev'
@@ -62,7 +62,7 @@ class App(Output):
 
     source: str
     target: str
-    addon: str
+    addon_path: str
     destination: str = None
     source_version: str = None
     target_version: str = None
@@ -148,6 +148,11 @@ class App(Output):
         self.repo = git.Repo(self.repo_path)
         if self.repo.is_dirty(untracked_files=True):
             raise ValueError("changes not committed detected in this repository.")
+
+        # Module name
+        self.addon_path = pathlib.Path(self.addon_path)
+        self.addons_rootdir = self.addon_path.parent
+        self.addon = self.addon_path.name
 
         # Convert them to full remote info if needed
         for key in ("source", "target", "destination"):
@@ -263,14 +268,19 @@ class App(Output):
 
     def _check_addon_exists(self, branch, raise_exc=False):
         repo = self.repo
-        addon = self.addon
-        branch_addons = [t.path for t in repo.commit(branch.ref()).tree.trees]
-        if addon not in branch_addons:
+        addons_tree = repo.commit(branch.ref()).tree
+        if self.addons_rootdir and self.addons_rootdir.name:
+            addons_tree /= str(self.addons_rootdir)
+        branch_addons = [t.path for t in addons_tree.trees]
+        if str(self.addon_path) not in branch_addons:
             if not raise_exc:
                 return False
-            error = f"{addon} does not exist on {branch.ref()}"
+            error = f"{self.addon_path} does not exist on {branch.ref()}"
             if self.cli:
-                error = f"{bc.FAIL}{addon}{bc.ENDC} does not exist on {branch.ref()}"
+                error = (
+                    f"{bc.FAIL}{self.addon_path}{bc.ENDC} "
+                    "does not exist on {branch.ref()}"
+                )
             raise ValueError(error)
         return True
 
