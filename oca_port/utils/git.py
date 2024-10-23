@@ -290,7 +290,7 @@ def run_pre_commit(repo, addon, commit=True, hook=None):
         repo.git.add("-A")
         if commit:
             repo.git.commit(
-                "-m", f"[IMP] {addon}: apply pre-commit auto fixes", "--no-verify"
+                "-m", f"[IMP] {addon}: pre-commit auto fixes", "--no-verify"
             )
 
 

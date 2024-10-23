@@ -12,26 +12,25 @@ import git
 
 
 class CommonCase(unittest.TestCase):
-    _settings = {
-        "branch1": "15.0",
-        "remote_branch1": "origin/15.0",
-        "branch2": "16.0",
-        "remote_branch2": "origin/16.0",
-        "branch3": "17.0",
-        "remote_branch3": "origin/17.0",
-        "addon": "my_module",
-        "from_org": None,
-        "from_remote": None,  # We're testing locally without any remote
-        "user_org": "OCA-test",
-        "no_cache": True,
-    }
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.upstream_org = "ORG"
+        cls.fork_org = "FORK"
+        cls.repo_name = "test"
+        cls.source1 = "origin/15.0"
+        cls.source2 = "origin/16.0"
+        cls.target1 = "origin/16.0"
+        cls.target2 = "origin/17.0"
+        cls.dest_branch = "dev"
+        cls.destination = f"{cls.fork_org}/{cls.dest_branch}"
+        cls.addon = "my_module"
+        cls.no_cache = True
 
     def setUp(self):
         # Create a temporary Git repository
         self.repo_upstream_path = self._create_tmp_git_repository()
-        self.module_path = os.path.join(
-            self.repo_upstream_path, self._settings["addon"]
-        )
+        self.module_path = os.path.join(self.repo_upstream_path, self.addon)
         self.manifest_path = os.path.join(self.module_path, "__manifest__.py")
         self._fill_git_repository(self.repo_upstream_path)
         # By cloning the first repository this will set an 'origin' remote
@@ -57,6 +56,9 @@ class CommonCase(unittest.TestCase):
         git.Repo.clone_from(upstream_path, repo_path)
         return repo_path
 
+    def _git_repo(self, repo_path):
+        return git.Repo(repo_path)
+
     def _fill_git_repository(self, repo_path):
         """Create branches with some content in the Git repository."""
         repo = git.Repo(repo_path)
@@ -68,28 +70,31 @@ class CommonCase(unittest.TestCase):
         with open(tpl_manifest_path) as tpl_manifest:
             tpl_manifest_lines = tpl_manifest.readlines()
         # Commit a file in '15.0'
-        repo.git.checkout("--orphan", self._settings["branch1"])
+        branch1 = self.source1.split("/")[1]
+        repo.git.checkout("--orphan", branch1)
         os.makedirs(self.module_path, exist_ok=True)
         with open(self.manifest_path, "w") as manifest:
             manifest.writelines(tpl_manifest_lines)
         repo.index.add(self.manifest_path)
-        commit = repo.index.commit(f"[ADD] {self._settings['addon']}")
+        commit = repo.index.commit(f"[ADD] {self.addon}")
         # Port the commit from 'branch1' to 'branch2'
-        repo.git.checkout("--orphan", self._settings["branch2"])
+        branch2 = self.source2.split("/")[1]
+        repo.git.checkout("--orphan", branch2)
         repo.git.reset("--hard")
         # FIXME without a delay, both branches are targeting the same commit,
         # no idea why.
         time.sleep(1)
         repo.git.cherry_pick(commit.hexsha)
         # Create an empty 'branch3'
-        repo.git.checkout("--orphan", self._settings["branch3"])
+        branch3 = self.target2.split("/")[1]
+        repo.git.checkout("--orphan", branch3)
         repo.git.reset("--hard")
         repo.git.commit("-m", "Init", "--allow-empty")
 
     def _add_fork_remote(self, repo_path):
         repo = git.Repo(repo_path)
         # We do not really care about the remote URL here, re-use origin one
-        repo.create_remote(self._settings["user_org"], repo.remotes.origin.url)
+        repo.create_remote(self.fork_org, repo.remotes.origin.url)
 
     def _commit_change_on_branch(self, repo_path, branch):
         """Commit a change that can be ported to another branch."""
@@ -102,20 +107,20 @@ class CommonCase(unittest.TestCase):
             manifest.seek(0)
             manifest.write(content)
         repo.index.add(self.manifest_path)
-        commit = repo.index.commit(f"[FIX] {self._settings['addon']}: fix dependency")
+        commit = repo.index.commit(f"[FIX] {self.addon}: fix dependency")
         return commit.hexsha
 
-    def _create_app(self, from_branch, to_branch, **kwargs):
+    def _create_app(self, source, target, destination=None, **kwargs):
         params = {
-            "from_branch": from_branch,
-            "to_branch": to_branch,
-            "addon": self._settings["addon"],
-            "from_org": self._settings["from_org"],
-            "from_remote": self._settings["from_remote"],
+            "source": source,
+            "target": target,
+            "destination": destination,
+            "addon": self.addon,
+            "source_version": None,
+            "target_version": None,
             "repo_path": self.repo_path,
-            "repo_name": "test",
-            "user_org": self._settings["user_org"],
-            "no_cache": self._settings["no_cache"],
+            "repo_name": self.repo_name,
+            "no_cache": self.no_cache,
         }
         params.update(kwargs)
         return App(**params)

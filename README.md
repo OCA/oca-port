@@ -21,18 +21,29 @@ Using
 If the addon does not exist on the target branch, it will assist the user in
 the migration, following the OCA migration guide.
 
-If the addon already exists on the target branch, it will retrieve missing
-commits to port. If a Pull Request exists for a missing commit, it will be
-ported with all its commits if they were not yet (fully) ported.
+If the addon already exists on the target branch, it will retrieve commits
+not fully ported grouped by Pull Request and propose to port them.
+
+Syntax:
+
+    $ oca-port <source> <target> <module> [options]
+    $ oca-port --help
 
 To check if an addon could be migrated or to get eligible commits to port:
 
     $ export GITHUB_TOKEN=<token>
-    $ oca-port 14.0 15.0 shopfloor --verbose
+    $ cd <path/to/OCA/cloned_repository>
+    $ oca-port origin/14.0 origin/16.0 <module> --verbose --dry-run
 
-To effectively migrate the addon or port its commits, use the `--fork` option:
+To effectively migrate the addon or port its commits, remove the `--dry-run` option
+so the tool will create a working local branch automatically (called destination)
+from the `<target>` branch:
 
-    $ oca-port 14.0 15.0 shopfloor --fork camptocamp
+    $ oca-port origin/14.0 origin/16.0 <module>
+
+You can control the destination with the `--destination` option:
+
+    $ oca-port origin/14.0 origin/16.0 <module> --destination camptocamp/16.0-port-things
 
 You can also directly blacklist a bunch of PRs on a given branch thanks to the
 `oca-port-pr` tool:
@@ -88,15 +99,14 @@ You can also use `oca-port` as a Python package:
 ```python
 >>> import oca_port
 >>> app = oca_port.App(
-...     from_branch="14.0",
-...     to_branch="16.0",
+...     source="origin/14.0",
+...     target="origin/16.0",
 ...     addon="stock_move_auto_assign",
-...     from_org": "OCA",
-...     from_remote": "origin",
+...     upstream_org": "OCA",
 ...     repo_path": "/home/odoo/OCA/stock-logistics-warehouse",
 ...     output": "json",
 ...     fetch": True,
-...     github_token: "ghp_sheeXai3xu1yoopheiquoo3ohch0AefooSob"
+...     github_token: "<TOKEN>"
 ... )
 >>> json_data = app.run()
 >>> data = json.loads(json_data)

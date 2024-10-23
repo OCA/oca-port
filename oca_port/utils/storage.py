@@ -82,9 +82,7 @@ class InputStorage:
         pr_ref = str(pr_ref or "orphaned_commits")
         return self._data.get("pull_requests", {}).get(pr_ref, False)
 
-    def blacklist_pr(self, pr_ref, confirm=False, reason=None):
-        if confirm and not click.confirm("\tBlacklist this PR?"):
-            return
+    def blacklist_pr(self, pr_ref, reason=None):
         if not reason:
             reason = click.prompt("\tReason", type=str)
         pr_ref = str(pr_ref or "orphaned_commits")
@@ -116,11 +114,6 @@ class InputStorage:
         if self.repo.is_dirty() and not all_in_storage:
             raise click.ClickException(
                 "changes not committed detected in this repository."
-            )
-        # Ensure to be on a dedicated branch
-        if self.repo.active_branch.name == self.to_branch.name:
-            raise click.ClickException(
-                "performing commit on upstream branch is not allowed."
             )
         # Commit all changes under ./.oca-port
         self.repo.index.add(self.storage_dirname)
