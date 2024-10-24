@@ -19,6 +19,7 @@ dependencies = [
     "gitpython",
     "requests",
     "giturlparse",
+    "odoo-module-migrator@git+https://github.com/OCA/odoo-module-migrator.git#egg=master"
 ]
 requires-python = ">=3.8"
 dynamic = ["version"]

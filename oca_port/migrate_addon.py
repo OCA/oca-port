@@ -4,6 +4,8 @@
 import os
 import tempfile
 import urllib.parse
+import subprocess
+
 
 import click
 
@@ -140,10 +142,10 @@ class MigrateAddon(Output):
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
-            g.run_pre_commit(self.app.repo, self.app.addon)
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(self.app, push_branch=False).run()
+        self._apply_code_pattern()
         self._print_tips()
         return True, None
 
@@ -240,3 +242,10 @@ class MigrateAddon(Output):
             new_pr_url=new_pr_url,
         )
         print(tips)
+
+    def _apply_code_pattern(self):
+        print("Apply code pattern...")
+        subprocess.run(
+            f"odoo-module-migrate -i {self.app.source_version} -t {self.app.target_version} --modules {self.app.addon} --directory {self.app.repo_path} ",
+            shell=True,
+        )
