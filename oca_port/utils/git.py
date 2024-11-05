@@ -2,6 +2,7 @@
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
 import contextlib
+import pathlib
 import re
 import subprocess
 from collections import abc
@@ -38,10 +39,12 @@ class Branch:
 class CommitPath(str):
     """Helper class to know if a base path is a directory or a file."""
 
-    def __new__(cls, value):
-        new_value = value.split("/", maxsplit=1)[0]
-        obj = super().__new__(cls, new_value)
-        obj.isdir = "/" in value
+    def __new__(cls, addons_path, value):
+        file_path = pathlib.Path(value).relative_to(addons_path)
+        root_node = file_path.parts[0]
+        obj = super().__new__(cls, root_node)
+        # As soon as `file_path` has a parent, the root node is obviously a folder
+        obj.isdir = bool(file_path.parent.name)
         return obj
 
 
@@ -58,9 +61,10 @@ class Commit:
     other_equality_attrs = ("paths",)
     eq_strict = True
 
-    def __init__(self, commit, cache=None):
+    def __init__(self, commit, addons_path=".", cache=None):
         """Initializes a new Commit instance from a GitPython Commit object."""
         self.raw_commit = commit
+        self.addons_path = addons_path
         self.cache = cache
         self.author_name = commit.author.name
         self.author_email = commit.author.email
@@ -87,11 +91,15 @@ class Commit:
 
     @property
     def paths(self):
-        """Returns list of `CommitPath` objects."""
-        # Access git storage or cache only on demand to avoid too much IO
-        paths = {CommitPath(f) for f in self.files}
-        if not self._paths:
-            self._paths = paths
+        """Return the folders/files updated in `addons_path`.
+
+        If a commit updates files 'x/a/b/c.py', 'x/d/e.py' and 'x/f.txt', knowing
+        the `addons_path` is `x`, the root nodes updated by this commit are
+        `a` (folder), `d` (folder) and `f.txt` (file).
+        """
+        if self._paths:
+            return self._paths
+        self._paths = {CommitPath(self.addons_path, f) for f in self.files}
         return self._paths
 
     def _get_files(self):
