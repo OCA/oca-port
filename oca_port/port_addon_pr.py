@@ -299,9 +299,13 @@ class PortAddonPullRequest(Output):
         data = session.get_data()
         blacklisted = data["pull_requests"].setdefault("blacklisted", {})
         for pr in blacklisted.values():
-            if self.app.storage.is_pr_blacklisted(pr["number"]):
+            if (
+                self.app.storage.is_pr_blacklisted(pr["ref"])
+                # TODO: Backward compat for old tracking only by number
+                or self.app.storage.is_pr_blacklisted(pr["number"])
+            ):
                 continue
-            self.app.storage.blacklist_pr(pr["number"], reason=pr["reason"])
+            self.app.storage.blacklist_pr(pr["ref"], reason=pr["reason"])
         if self.app.storage.dirty:
             pr_refs = ", ".join([str(pr["number"]) for pr in blacklisted.values()])
             self.app.storage.commit(
