@@ -8,6 +8,8 @@ import pkg_resources
 
 import click
 
+from oca_port.squash_bot_commits import SquashBotCommits
+
 from .port_addon_pr import PortAddonPullRequest
 from .utils import git as g
 from .utils.misc import Output, bcolors as bc
@@ -161,6 +163,7 @@ class MigrateAddon(Output):
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(self.app, push_branch=False).run()
+        SquashBotCommits(self.app).run()
         self._print_tips(adapted=adapted)
         return True, None
 
