@@ -99,7 +99,15 @@ class Commit:
         """
         if self._paths:
             return self._paths
-        self._paths = {CommitPath(self.addons_path, f) for f in self.files}
+        self._paths = set()
+        for f in self.files:
+            # Could raise "ValueError: 'f' is not in the subpath of 'addons_path'"
+            # in such case we ignore these files, and keep ones in 'addons_path'
+            try:
+                commit_path = CommitPath(self.addons_path, f)
+            except ValueError:
+                continue
+            self._paths.add(commit_path)
         return self._paths
 
     def _get_files(self):
