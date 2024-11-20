@@ -850,10 +850,11 @@ class BranchesDiff(Output):
         # Request GitHub to get them
         if not any("github.com" in remote.url for remote in self.app.repo.remotes):
             return
+        src_repo_name = self.app.source.repo or self.app.repo_name
         try:
             raw_data = self.app.github.get_original_pr(
                 self.app.upstream_org,
-                self.app.repo_name,
+                src_repo_name,
                 self.app.from_branch.name,
                 commit.hexsha,
             )
@@ -866,7 +867,7 @@ class BranchesDiff(Output):
             # NOTE: commits fetched from PR are already in the right order
             pr_number = raw_data["number"]
             pr_commits_data = self.app.github.request(
-                f"repos/{self.app.upstream_org}/{self.app.repo_name}"
+                f"repos/{self.app.upstream_org}/{src_repo_name}"
                 f"/pulls/{pr_number}/commits?per_page=100"
             )
             pr_commits = [pr["sha"] for pr in pr_commits_data]
