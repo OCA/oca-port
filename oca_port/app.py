@@ -185,8 +185,8 @@ class App(Output):
         self.repo_path = pathlib.Path(self.repo_path)
         self.repo_name = (
             self.repo_name
-            or self.source.repo
             or self.target.repo
+            or self.source.repo
             or self.repo_path.absolute().name
         )
         if not self.repo_path:
