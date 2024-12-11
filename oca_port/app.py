@@ -4,6 +4,7 @@ import os
 import pathlib
 from dataclasses import dataclass
 import re
+import subprocess
 
 import git
 
@@ -109,7 +110,20 @@ class App(Output):
         self._check_branch_exists(self.source.ref, raise_exc=True)
         self._check_branch_exists(self.target.ref, raise_exc=True)
         # GitHub API helper
-        self.github = GitHub(self.github_token or os.environ.get("GITHUB_TOKEN"))
+        token = False
+        if os.environ.get("GITHUB_TOKEN"):
+            token = os.environ["GITHUB_TOKEN"]
+        else:
+            token = self.github_token
+            if not token:
+                try:
+                    # get from gh
+                    token = subprocess.check_output(
+                        ["gh", "auth", "token"], text=True
+                    ).strip()
+                except subprocess.SubprocessError:
+                    pass
+        self.github = GitHub(token)
         # Initialize storage & cache
         self.storage = utils.storage.InputStorage(self.to_branch, self.addon)
         self.cache = utils.cache.UserCacheFactory(self).build()
