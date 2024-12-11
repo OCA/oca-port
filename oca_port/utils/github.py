@@ -3,6 +3,8 @@
 
 import re
 
+import os
+import subprocess
 import requests
 
 from .git import PullRequest
@@ -12,6 +14,8 @@ GITHUB_API_URL = "https://api.github.com"
 
 class GitHub:
     def __init__(self, token=None):
+        if not token:
+            token = self._get_token()
         self.token = token
 
     def request(self, url: str, method: str = "get", params=None, json=None):
@@ -77,3 +81,16 @@ class GitHub:
     def _addon_in_text(self, addon: str, text: str):
         """Return `True` if `addon` is present in `text`."""
         return any(addon == term for term in re.split(r"\W+", text))
+
+    @staticmethod
+    def _get_token():
+        token = os.environ.get("GITHUB_TOKEN")
+        if not token:
+            try:
+                # get from gh
+                token = subprocess.check_output(
+                    ["gh", "auth", "token"], text=True
+                ).strip()
+            except subprocess.SubprocessError:
+                pass
+        return token
