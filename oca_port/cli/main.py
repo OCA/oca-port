@@ -98,6 +98,7 @@ from ..utils.misc import bcolors as bc
 @click.option("--fetch", is_flag=True, help="Fetch remote branches from upstream.")
 @click.option("--no-cache", is_flag=True, help="Disable user's cache.")
 @click.option("--clear-cache", is_flag=True, help="Clear the user's cache.")
+@click.option("--rename-to", help="New name")  # FIXME: adapt help
 def main(
     addon_path: str,
     source: str,
@@ -114,6 +115,7 @@ def main(
     no_cache: bool,
     clear_cache: bool,
     dry_run: bool,
+    rename_to: str,
 ):
     """Migrate ADDON from SOURCE to TARGET or list Pull Requests to port.
 
@@ -148,6 +150,7 @@ def main(
             clear_cache=clear_cache,
             dry_run=dry_run,
             cli=True,
+            rename_to=rename_to,
         )
     except ForkValueError as exc:
         error_msg = prepare_remote_error_msg(*exc.args)
