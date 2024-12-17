@@ -104,6 +104,7 @@ from ..utils.misc import bcolors as bc
     help="""Token to use when requesting GitHub API (highly recommended
             to not trigger the "API rate limit exceeded" error).""",
 )
+@click.option("--rename-to", help="New name for the addon")
 def main(
     addon_path: str,
     source: str,
@@ -121,6 +122,7 @@ def main(
     clear_cache: bool,
     dry_run: bool,
     github_token: str,
+    rename_to: str,
 ):
     """Migrate ADDON from SOURCE to TARGET or list Pull Requests to port.
 
@@ -156,6 +158,7 @@ def main(
             dry_run=dry_run,
             cli=True,
             github_token=github_token,
+            rename_to=rename_to,
         )
     except ForkValueError as exc:
         error_msg = prepare_remote_error_msg(*exc.args)
