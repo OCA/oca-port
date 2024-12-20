@@ -25,47 +25,50 @@ MIG_NEW_PR_URL = (
     "https://github.com/{from_org}/{repo_name}/compare/"
     "{to_branch}...{to_org}:{mig_branch}?expand=1&title={title}"
 )
-MIG_TIPS = "\n".join(
-    [
-        f"\n{bc.BOLD}{bc.OKCYAN}The next steps are:{bc.END}",
-        ("\t1) Reduce the number of commits " f"('{bc.DIM}OCA Transbot...{bc.END}'):"),
-        f"\t\t=> {bc.BOLD}{MIG_MERGE_COMMITS_URL}{bc.END}",
-        "\t2) Adapt the module to the {version} version:",
-        f"\t\t=> {bc.BOLD}" "{mig_tasks_url}" f"{bc.END}",
-        (
-            "\t3) On a shell command, type this for uploading the content to GitHub:\n"
-            f"{bc.DIM}"
-            "\t\t$ git add --all\n"
-            '\t\t$ git commit -m "[MIG] {addon}: Migration to {version}"\n'
-            "\t\t$ git push {remote} {mig_branch} --set-upstream"
-            f"{bc.END}"
-        ),
-        "\t4) Create the PR against {from_org}/{repo_name}:",
-        f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
-    ]
-)
-BLACKLIST_TIPS = "\n".join(
-    [
-        f"\n{bc.BOLD}{bc.OKCYAN}The next steps are:{bc.END}",
-        (
-            "\t1) On a shell command, type this for uploading the content to GitHub:\n"
-            f"{bc.DIM}"
-            "\t\t$ git push {remote} {mig_branch} --set-upstream"
-            f"{bc.END}"
-        ),
-        "\t2) Create the PR against {from_org}/{repo_name}:",
-        f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
-    ]
-)
-SIMPLIFIED_MIG_TIPS = "\n".join(
-    [
-        f"\n{bc.BOLD}{bc.OKCYAN}The next steps are:{bc.END}",
-        ("\t1) Reduce the number of commits " f"('{bc.DIM}OCA Transbot...{bc.END}'):"),
-        f"\t\t=> {bc.BOLD}{MIG_MERGE_COMMITS_URL}{bc.END}",
-        "\t2) Create the PR against {from_org}/{repo_name}:",
-        f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
-    ]
-)
+MIG_STEPS = {
+    "reduce_commits": (
+        "Reduce the number of commits "
+        f"('{bc.DIM}OCA Transbot...{bc.END}'):\n"
+        f"\t\t=> {bc.BOLD}{MIG_MERGE_COMMITS_URL}{bc.END}"
+    ),
+    "adapt_module": (
+        "Adapt the module to the {version} version:\n"
+        f"\t\t=> {bc.BOLD}"
+        "{mig_tasks_url}"
+        f"{bc.END}"
+    ),
+    "amend_mig_commit": (
+        "Include your changes in the existing migration commit:\n"
+        f"{bc.DIM}"
+        "\t\t$ git add --all\n"
+        "\t\t$ git commit --amend\n"
+        "\t\t$ git push {remote} {mig_branch} --set-upstream"
+        f"{bc.END}"
+    ),
+    "commands": (
+        "On a shell command, type this for uploading the content to GitHub:\n"
+        f"{bc.DIM}"
+        "\t\t$ git add --all\n"
+        '\t\t$ git commit -m "[MIG] {addon}: Migration to {version}"\n'
+        "\t\t$ git push {remote} {mig_branch} --set-upstream"
+        f"{bc.END}"
+    ),
+    "create_pr": (
+        "Create the PR against {from_org}/{repo_name}:\n"
+        f"\t\t=> {bc.BOLD}"
+        "{new_pr_url}"
+        f"{bc.END}"
+    ),
+    "push_blacklist": (
+        "On a shell command, type this for uploading the content to GitHub:\n"
+        f"{bc.DIM}"
+        "\t\t$ git push {remote} {mig_branch} --set-upstream"
+        f"{bc.END}"
+    ),
+}
+MIG_USUAL_STEPS = ("reduce_commits", "adapt_module", "commands", "create_pr")
+MIG_BLACKLIST_STEPS = ("push_blacklist", "create_pr")
+MIG_ADAPTED_STEPS = ("reduce_commits", "adapt_module", "amend_mig_commit", "create_pr")
 
 
 class MigrateAddon(Output):
@@ -234,7 +237,8 @@ class MigrateAddon(Output):
             title=pr_title_encoded,
         )
         if blacklisted:
-            tips = BLACKLIST_TIPS.format(
+            steps = self._generate_mig_steps(MIG_BLACKLIST_STEPS)
+            tips = steps.format(
                 from_org=self.app.upstream_org,
                 repo_name=self.app.repo_name,
                 remote=self.app.destination.remote,
@@ -242,16 +246,22 @@ class MigrateAddon(Output):
                 new_pr_url=new_pr_url,
             )
             print(tips)
-            return
+            return tips
         if adapted:
-            tips = SIMPLIFIED_MIG_TIPS.format(
+            steps = self._generate_mig_steps(MIG_ADAPTED_STEPS)
+            tips = steps.format(
                 from_org=self.app.upstream_org,
                 repo_name=self.app.repo_name,
+                version=self.app.target_version,
+                remote=self.app.destination.remote or "YOUR_REMOTE",
+                mig_branch=self.mig_branch.name,
+                mig_tasks_url=mig_tasks_url,
                 new_pr_url=new_pr_url,
             )
             print(tips)
-            return
-        tips = MIG_TIPS.format(
+            return tips
+        steps = self._generate_mig_steps(MIG_USUAL_STEPS)
+        tips = steps.format(
             from_org=self.app.upstream_org,
             repo_name=self.app.repo_name,
             addon=self.app.addon,
@@ -262,6 +272,14 @@ class MigrateAddon(Output):
             new_pr_url=new_pr_url,
         )
         print(tips)
+        return tips
+
+    def _generate_mig_steps(self, steps):
+        result = []
+        for i, step in enumerate(steps, 1):
+            text = f"\t{i}) " + MIG_STEPS[step]
+            result.append(text)
+        return "\n".join(result)
 
     def _apply_code_pattern(self):
         print("Apply code pattern...")

@@ -278,7 +278,7 @@ class App(Output):
             if self.cli:
                 error = (
                     f"{bc.FAIL}{self.addon_path}{bc.ENDC} "
-                    "does not exist on {branch.ref()}"
+                    f"does not exist on {branch.ref()}"
                 )
             raise ValueError(error)
         return True
