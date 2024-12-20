@@ -1,6 +1,5 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
-import os
 import pathlib
 from dataclasses import dataclass
 import re
@@ -109,7 +108,7 @@ class App(Output):
         self._check_branch_exists(self.source.ref, raise_exc=True)
         self._check_branch_exists(self.target.ref, raise_exc=True)
         # GitHub API helper
-        self.github = GitHub(self.github_token or os.environ.get("GITHUB_TOKEN"))
+        self.github = GitHub(self.github_token)
         # Initialize storage & cache
         self.storage = utils.storage.InputStorage(self.to_branch, self.addon)
         self.cache = utils.cache.UserCacheFactory(self).build()

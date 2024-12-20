@@ -33,9 +33,16 @@ Syntax:
     $ oca-port <source> <target> <module_path> [options]
     $ oca-port --help
 
-To check if an addon could be migrated or to get eligible commits to port:
+GITHUB_TOKEN can be passed by exposing to environment:
 
     $ export GITHUB_TOKEN=<token>
+
+Alternatively, you can pass the token directly using the `--github-token` option
+
+If neither method is used, the tool will attempt to obtain the token using the `gh` client (if it's installed).
+
+To check if an addon could be migrated or to get eligible commits to port:
+
     $ cd <path/to/OCA/cloned_repository>
     $ oca-port origin/16.0 origin/18.0 <module_path> --verbose --dry-run
 
