@@ -66,6 +66,26 @@ SIMPLIFIED_MIG_TIPS = "\n".join(
         f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
     ]
 )
+RENAME_TIPS = "\n".join(
+    [
+        f"\n{bc.BOLD}{bc.OKCYAN}The next steps are:{bc.END}",
+        (f"\t1) Change the filenames of the renamed addon as necessary {bc.END}"),
+        ("\t2) Reduce the number of commits " f"('{bc.DIM}OCA Transbot...{bc.END}'):"),
+        f"\t\t=> {bc.BOLD}{MIG_MERGE_COMMITS_URL}{bc.END}",
+        "\t3) Adapt the module to the {version} version:",
+        f"\t\t=> {bc.BOLD}" "{mig_tasks_url}" f"{bc.END}",
+        (
+            "\t4) On a shell command, type this for uploading the content to GitHub:\n"
+            f"{bc.DIM}"
+            "\t\t$ git add --all\n"
+            '\t\t$ git commit -m "[MIG] {addon}: Migration to {version}"\n'
+            "\t\t$ git push {remote} {mig_branch} --set-upstream"
+            f"{bc.END}"
+        ),
+        "\t5) Create the PR against {from_org}/{repo_name}:",
+        f"\t\t=> {bc.BOLD}" "{new_pr_url}" f"{bc.END}",
+    ]
+)
 
 
 class MigrateAddon(Output):
@@ -76,6 +96,12 @@ class MigrateAddon(Output):
             self.app.repo,
             (
                 self.app.destination.branch
+                or (
+                    self.app.rename_to
+                    and MIG_BRANCH_NAME.format(
+                        branch=self.app.target_version, addon=self.app.rename_to
+                    )
+                )
                 or MIG_BRANCH_NAME.format(
                     branch=self.app.target_version, addon=self.app.addon
                 )
@@ -141,7 +167,7 @@ class MigrateAddon(Output):
         if self.app.repo.untracked_files:
             raise click.ClickException("Untracked files detected, abort")
         self._checkout_base_branch()
-        adapted = False
+        renamed = adapted = False
         if self._create_mig_branch():
             # Case where the addon shouldn't be ported (blacklisted)
             if self.app.storage.dirty:
@@ -155,11 +181,45 @@ class MigrateAddon(Output):
                 g.run_pre_commit(self.app.repo, self.app.addon)
             else:
                 adapted = self._apply_code_pattern()
+
+            renamed = self._rename_module()
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(self.app, push_branch=False).run()
-        self._print_tips(adapted=adapted)
+        self._print_tips(adapted=adapted, renamed=renamed)
         return True, None
+
+    def _rename_module(self):
+        if self.app.rename_to:
+            try:
+                import git_filter_repo as fr
+
+                repo = self.app.repo
+                addons_tree = repo.commit(self.mig_branch.ref()).tree
+                if self.app.addons_rootdir and self.app.addons_rootdir.name:
+                    addons_tree /= str(self.app.addons_rootdir)
+                branch_addons = [t.path for t in addons_tree.trees]
+
+                if str(self.app.rename_to) in branch_addons:
+                    raise ValueError(f"{self.app.rename_to} already exists")
+                # rename addon
+                os.rename(self.app.addon_path, self.app.rename_to)
+
+                # rewrite history with new name
+                args = fr.FilteringOptions.parse_args(
+                    [
+                        f"--path-rename={self.app.addon_path}:{self.app.rename_to}",
+                        "--refs",
+                        self.mig_branch.name,
+                        "--force",  # it's safe as it functions on mig_branch
+                    ]
+                )
+                filter = fr.RepoFilter(args)
+                filter.run()
+                return True
+            except ImportError:
+                raise SystemExit("Error: Couldn't find git-filter-repo")
+        return False
 
     def _checkout_base_branch(self):
         # Ensure to not start to work from a working branch
@@ -218,7 +278,7 @@ class MigrateAddon(Output):
             f"has been migrated."
         )
 
-    def _print_tips(self, blacklisted=False, adapted=False):
+    def _print_tips(self, blacklisted=False, adapted=False, renamed=False):
         mig_tasks_url = MIG_TASKS_URL.format(version=self.app.target_version)
         pr_title_encoded = urllib.parse.quote(
             MIG_NEW_PR_TITLE.format(
@@ -239,6 +299,19 @@ class MigrateAddon(Output):
                 repo_name=self.app.repo_name,
                 remote=self.app.destination.remote,
                 mig_branch=self.mig_branch.name,
+                new_pr_url=new_pr_url,
+            )
+            print(tips)
+            return
+        if renamed:
+            tips = RENAME_TIPS.format(
+                from_org=self.app.upstream_org,
+                repo_name=self.app.repo_name,
+                addon=self.app.addon,
+                version=self.app.target_version,
+                remote=self.app.destination.remote or "YOUR_REMOTE",
+                mig_branch=self.mig_branch.name,
+                mig_tasks_url=mig_tasks_url,
                 new_pr_url=new_pr_url,
             )
             print(tips)
