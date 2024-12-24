@@ -95,6 +95,8 @@ class TestApp(common.CommonCase):
         except SystemExit as exc:
             # exit code 100 means the module could be migrated
             self.assertEqual(exc.args[0], 100)
+
+    def test_app_module_does_not_exist(self):
         # The other way around, nothing to migrate as the module doesn't exist
         # (with CLI, the returned exit code is then 1)
         app = self._create_app(self.target2, self.source2)
