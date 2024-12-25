@@ -77,6 +77,7 @@ class App(Output):
     clear_cache: bool = False
     github_token: str = None
     cli: bool = False  # Not documented, should not be used outside of the CLI
+    rename_to: str = None
 
     _available_outputs = ("json",)
 

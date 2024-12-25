@@ -7,6 +7,7 @@ import urllib.parse
 import pkg_resources
 
 import click
+import git_filter_repo as fr
 
 from .port_addon_pr import PortAddonPullRequest
 from .utils import git as g
@@ -65,10 +66,12 @@ MIG_STEPS = {
         "\t\t$ git push {remote} {mig_branch} --set-upstream"
         f"{bc.END}"
     ),
+    "rename_file": (f"Change the filenames of the renamed addon as necessary {bc.END}"),
 }
 MIG_USUAL_STEPS = ("reduce_commits", "adapt_module", "commands", "create_pr")
 MIG_BLACKLIST_STEPS = ("push_blacklist", "create_pr")
 MIG_ADAPTED_STEPS = ("reduce_commits", "adapt_module", "amend_mig_commit", "create_pr")
+MIG_RENAMED_TIPS = ("rename_file",)
 
 
 class MigrateAddon(Output):
@@ -80,7 +83,8 @@ class MigrateAddon(Output):
             (
                 self.app.destination.branch
                 or MIG_BRANCH_NAME.format(
-                    branch=self.app.target_version, addon=self.app.addon
+                    branch=self.app.target_version,
+                    addon=(self.app.rename_to or self.app.addon),
                 )
             ),
         )
@@ -144,7 +148,7 @@ class MigrateAddon(Output):
         if self.app.repo.untracked_files:
             raise click.ClickException("Untracked files detected, abort")
         self._checkout_base_branch()
-        adapted = False
+        renamed = adapted = False
         if self._create_mig_branch():
             # Case where the addon shouldn't be ported (blacklisted)
             if self.app.storage.dirty:
@@ -158,11 +162,43 @@ class MigrateAddon(Output):
                 g.run_pre_commit(self.app.repo, self.app.addon)
             else:
                 adapted = self._apply_code_pattern()
+
+            renamed = self._rename_module()
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(self.app, push_branch=False).run()
-        self._print_tips(adapted=adapted)
+        self._print_tips(adapted=adapted, renamed=renamed)
         return True, None
+
+    def _rename_module(self):
+        if self.app.rename_to:
+            repo = self.app.repo
+            addons_tree = repo.commit(self.mig_branch.ref()).tree
+            if self.app.addons_rootdir and self.app.addons_rootdir.name:
+                addons_tree /= str(self.app.addons_rootdir)
+            branch_addons = [t.path for t in addons_tree.trees]
+
+            renamed_addon_path = str(self.app.addon_path).replace(
+                self.app.addon, self.app.rename_to
+            )
+            if renamed_addon_path in branch_addons:
+                raise ValueError(f"{self.app.rename_to} already exists")
+            # rename addon
+            os.rename(self.app.addon_path, renamed_addon_path)
+
+            # rewrite history with new name
+            args = fr.FilteringOptions.parse_args(
+                [
+                    f"--path-rename={self.app.addon_path}:{renamed_addon_path}",
+                    "--refs",
+                    self.mig_branch.name,
+                    "--force",  # it's safe as it functions on mig_branch
+                ]
+            )
+            filter = fr.RepoFilter(args)
+            filter.run()
+            return True
+        return False
 
     def _checkout_base_branch(self):
         # Ensure to not start to work from a working branch
@@ -221,7 +257,7 @@ class MigrateAddon(Output):
             f"has been migrated."
         )
 
-    def _print_tips(self, blacklisted=False, adapted=False):
+    def _print_tips(self, blacklisted=False, adapted=False, renamed=False):
         mig_tasks_url = MIG_TASKS_URL.format(version=self.app.target_version)
         pr_title_encoded = urllib.parse.quote(
             MIG_NEW_PR_TITLE.format(
@@ -243,6 +279,22 @@ class MigrateAddon(Output):
                 repo_name=self.app.repo_name,
                 remote=self.app.destination.remote,
                 mig_branch=self.mig_branch.name,
+                new_pr_url=new_pr_url,
+            )
+            print(tips)
+            return tips
+        if renamed:
+            steps = self._generate_mig_steps(
+                MIG_RENAMED_TIPS + MIG_ADAPTED_STEPS if adapted else MIG_USUAL_STEPS
+            )
+            tips = steps.format(
+                from_org=self.app.upstream_org,
+                repo_name=self.app.repo_name,
+                addon=self.app.addon,
+                version=self.app.target_version,
+                remote=self.app.destination.remote or "YOUR_REMOTE",
+                mig_branch=self.mig_branch.name,
+                mig_tasks_url=mig_tasks_url,
                 new_pr_url=new_pr_url,
             )
             print(tips)
