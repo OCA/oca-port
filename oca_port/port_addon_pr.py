@@ -165,7 +165,7 @@ class PortAddonPullRequest(Output):
                     msg = "ℹ️  To resume the work from this branch, relaunch with:\n\n"
                     cmd = (
                         f"\t{bc.DIM}oca-port {self.app.source.ref} "
-                        f"{dest_branch_name} {self.app.addon} %s{bc.END}"
+                        f"{dest_branch_name} {self.app.addon_path} %s{bc.END}"
                     )
                     opts = []
                     if self.app.source.branch != self.app.source_version:
