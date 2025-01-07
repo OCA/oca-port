@@ -518,20 +518,14 @@ class PortAddonPullRequest(Output):
                 f"[{self.app.target_version}][FW] {self.app.addon}: multiple ports "
                 f"from {self.app.source_version}"
             )
-            lines = [f"- #{pr['number']}" for pr in processed_prs.values()]
-            body = "\n".join(
-                [
-                    f"Port of the following PRs from {self.app.source_version} "
-                    f"to {self.app.target_version}:"
-                ]
-                + lines
-            )
         if len(processed_prs) == 1:
             pr = list(processed_prs.values())[0]
             title = f"[{self.app.target_version}][FW] {pr['title']}"
-            body = (
-                f"Port of #{pr['number']} from {self.app.source_version} "
-                f"to {self.app.target_version}."
+        if processed_prs:
+            lines = [f"- #{pr['number']}" for pr in processed_prs.values()]
+            body = "\n".join(
+                [f"Port from {self.app.source_version} to {self.app.target_version}:"]
+                + lines
             )
         # Handle blacklisted PRs
         if blacklisted_prs:
