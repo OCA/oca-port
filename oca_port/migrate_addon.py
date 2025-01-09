@@ -4,7 +4,7 @@
 import os
 import tempfile
 import urllib.parse
-import pkg_resources
+from importlib import metadata
 
 import click
 
@@ -154,10 +154,12 @@ class MigrateAddon(Output):
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
-            if pkg_resources.get_distribution("odoo-module-migrator") is None:
-                g.run_pre_commit(self.app.repo, self.app.addon)
-            else:
+
+            try:
+                metadata.metadata("odoo-module-migrator")
                 adapted = self._apply_code_pattern()
+            except metadata.PackageNotFoundError:
+                g.run_pre_commit(self.app.repo, self.app.addon)
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(self.app, push_branch=False).run()
@@ -296,3 +298,4 @@ class MigrateAddon(Output):
             return True
         except KeyboardInterrupt:
             pass
+        return False
