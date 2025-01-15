@@ -62,20 +62,11 @@ class CommonCase(unittest.TestCase):
     def _fill_git_repository(self, repo_path):
         """Create branches with some content in the Git repository."""
         repo = git.Repo(repo_path)
-        tpl_manifest_path = os.path.join(
-            pathlib.Path(__file__).parent.resolve(),
-            "data",
-            "manifest.py",
-        )
-        with open(tpl_manifest_path) as tpl_manifest:
-            tpl_manifest_lines = tpl_manifest.readlines()
         # Commit a file in '15.0'
         branch1 = self.source1.split("/")[1]
         repo.git.checkout("--orphan", branch1)
-        os.makedirs(self.module_path, exist_ok=True)
-        with open(self.manifest_path, "w") as manifest:
-            manifest.writelines(tpl_manifest_lines)
-        repo.index.add(self.manifest_path)
+        self._create_module(self.module_path)
+        repo.index.add(self.module_path)
         commit = repo.index.commit(f"[ADD] {self.addon}")
         # Port the commit from 'branch1' to 'branch2'
         branch2 = self.source2.split("/")[1]
@@ -91,22 +82,41 @@ class CommonCase(unittest.TestCase):
         repo.git.reset("--hard")
         repo.git.commit("-m", "Init", "--allow-empty")
 
+    def _create_module(self, module):
+        tpl_manifest_path = os.path.join(
+            pathlib.Path(__file__).parent.resolve(),
+            "data",
+            "manifest.py",
+        )
+        with open(tpl_manifest_path) as tpl_manifest:
+            tpl_manifest_lines = tpl_manifest.readlines()
+        os.makedirs(module, exist_ok=True)
+        manifest_path = os.path.join(module, "__manifest__.py")
+        with open(manifest_path, "w") as manifest:
+            manifest.writelines(tpl_manifest_lines)
+
     def _add_fork_remote(self, repo_path):
         repo = git.Repo(repo_path)
         # We do not really care about the remote URL here, re-use origin one
         repo.create_remote(self.fork_org, repo.remotes.origin.url)
 
-    def _commit_change_on_branch(self, repo_path, branch):
+    def _commit_change_on_branch(self, repo_path, branch, add_satellite_change=False):
         """Commit a change that can be ported to another branch."""
         repo = git.Repo(repo_path)
         repo.git.checkout(branch)
-        # Do some changes and commit
+        # Do some changes in existing modules
         with open(self.manifest_path, "r+") as manifest:
             content = manifest.read()
             content = content.replace('"base"', '"sale"')
             manifest.seek(0)
             manifest.write(content)
         repo.index.add(self.manifest_path)
+        # Create a new module in the same commit
+        if add_satellite_change:
+            module_path = os.path.join(self.repo_upstream_path, f"test_{self.addon}")
+            self._create_module(module_path)
+            repo.index.add(module_path)
+        # Commit
         commit = repo.index.commit(f"[FIX] {self.addon}: fix dependency")
         return commit.hexsha
 

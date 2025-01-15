@@ -275,20 +275,21 @@ class PullRequest(abc.Hashable):
     def paths_not_ported(self):
         return list(self.paths - self.ported_paths)
 
-    def to_dict(self, number=False, body=False, commits=False):
+    def to_dict(self, ref=True, number=False, body=False, commits=False):
         data = {
             "url": self.url,
-            "ref": self.ref,
             "author": self.author,
             "title": self.title,
             "merged_at": str(self.merged_at or ""),
         }
+        if ref:
+            data["ref"] = self.ref
         if number:
             data["number"] = self.number
         if body:
             data["body"] = self.body
         if commits:
-            data["commits"] = [c.hexsha for c in self.commits]
+            data["commits"] = self.commits
         return data
 
 
@@ -323,3 +324,11 @@ def get_changed_paths(repo, modified=True, staged=True):
     if staged:
         changed_diff.extend(repo.index.diff("HEAD"))
     return [diff.a_path or diff.b_path for diff in changed_diff]
+
+
+def check_path_exists(repo, ref, path, rootdir=None):
+    root_tree = repo.commit(ref).tree
+    if rootdir:
+        root_tree /= str(rootdir)
+    paths = [t.path for t in root_tree.trees]
+    return path in paths

@@ -104,6 +104,17 @@ class TestApp(common.CommonCase):
         with self.assertRaisesRegex(ValueError, error_msg):
             app.run()
 
+    def test_app_nothing_to_port_non_interactive(self):
+        app = self._create_app(self.source1, self.target1, non_interactive=True)
+        result = app.run()
+        self.assertFalse(result)
+        self.assertIsInstance(result, bool)
+        # The other way around, no commit to backport
+        app = self._create_app(self.target1, self.source1, non_interactive=True)
+        result = app.run()
+        self.assertFalse(result)
+        self.assertIsInstance(result, bool)
+
     def test_app_commit_to_port_non_interactive(self):
         repo = self._git_repo(self.repo_path)
         source1 = extract_ref_info(repo, "source", self.source1)

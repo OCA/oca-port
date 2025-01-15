@@ -4,6 +4,7 @@
 import os
 import hashlib
 import itertools
+import pathlib
 import shutil
 import tempfile
 import urllib.parse
@@ -54,9 +55,6 @@ NEW_PR_URL = (
     "{to_branch}...{to_org}:{pr_branch}?expand=1&title={title}"
 )
 
-# Fake PR for commits w/o any PR (used as fallback)
-FAKE_PR = g.PullRequest(*[""] * 6)
-
 
 def path_to_skip(commit_path):
     """Return True if the commit path should not be ported."""
@@ -88,9 +86,12 @@ class PortAddonPullRequest(Output):
             "checking PRs to port..."
         )
         branches_diff = BranchesDiff(self.app)
-        branches_diff.print_diff(self.app.verbose)
+        if branches_diff.commits_diff["addon"]:
+            branches_diff.print_diff(verbose=self.app.verbose)
+        if branches_diff.commits_diff["satellite"]:
+            branches_diff.print_satellite_diff(verbose=self.app.verbose)
         if self.app.non_interactive:
-            if branches_diff.commits_diff:
+            if branches_diff.commits_diff["addon"]:
                 # If an output is defined we return the result in the expected format
                 if self.app.output:
                     self._results["results"] = branches_diff.serialized_diff
@@ -119,11 +120,11 @@ class PortAddonPullRequest(Output):
     def _get_dest_branch_name(self, branches_diff):
         dest_branch_name = self.app.destination.branch
         # Define a destination branch if not set
-        if branches_diff.commits_diff and not dest_branch_name:
+        if branches_diff.commits_diff["addon"] and not dest_branch_name:
             commits_to_port = [
                 commit.hexsha
                 for commit in itertools.chain.from_iterable(
-                    branches_diff.commits_diff.values()
+                    branches_diff.commits_diff["addon"].values()
                 )
             ]
             h = hashlib.shake_256("-".join(commits_to_port).encode())
@@ -142,7 +143,7 @@ class PortAddonPullRequest(Output):
         wip = self._print_wip_session()
         dest_branch_name = self.app.destination.branch
         # Nothing to port
-        if not branches_diff.commits_diff or not dest_branch_name:
+        if not branches_diff.commits_diff["addon"] or not dest_branch_name:
             # Nothing to port while having WIP means the porting is done
             return wip
         # Check if destination branch exists, and create it if not
@@ -164,7 +165,7 @@ class PortAddonPullRequest(Output):
                     msg = "ℹ️  To resume the work from this branch, relaunch with:\n\n"
                     cmd = (
                         f"\t{bc.DIM}oca-port {self.app.source.ref} "
-                        f"{dest_branch_name} {self.app.addon} %s{bc.END}"
+                        f"{dest_branch_name} {self.app.addon_path} %s{bc.END}"
                     )
                     opts = []
                     if self.app.source.branch != self.app.source_version:
@@ -194,11 +195,11 @@ class PortAddonPullRequest(Output):
         dest_branch = g.Branch(self.app.repo, dest_branch_name)
         self.app.repo.heads[dest_branch.name].checkout()
         last_pr = (
-            list(branches_diff.commits_diff.keys())[-1]
-            if branches_diff.commits_diff
+            list(branches_diff.commits_diff["addon"].keys())[-1]
+            if branches_diff.commits_diff["addon"]
             else None
         )
-        for pr, commits in branches_diff.commits_diff.items():
+        for pr, commits in branches_diff.commits_diff["addon"].items():
             # Check if PR has been blacklisted in user's session
             if self._is_pr_blacklisted(pr):
                 if self._confirm_pr_blacklisted(pr):
@@ -517,20 +518,14 @@ class PortAddonPullRequest(Output):
                 f"[{self.app.target_version}][FW] {self.app.addon}: multiple ports "
                 f"from {self.app.source_version}"
             )
-            lines = [f"- #{pr['number']}" for pr in processed_prs.values()]
-            body = "\n".join(
-                [
-                    f"Port of the following PRs from {self.app.source_version} "
-                    f"to {self.app.target_version}:"
-                ]
-                + lines
-            )
         if len(processed_prs) == 1:
             pr = list(processed_prs.values())[0]
             title = f"[{self.app.target_version}][FW] {pr['title']}"
-            body = (
-                f"Port of #{pr['number']} from {self.app.source_version} "
-                f"to {self.app.target_version}."
+        if processed_prs:
+            lines = [f"- #{pr['number']}" for pr in processed_prs.values()]
+            body = "\n".join(
+                [f"Port from {self.app.source_version} to {self.app.target_version}:"]
+                + lines
             )
         # Handle blacklisted PRs
         if blacklisted_prs:
@@ -632,7 +627,7 @@ class BranchesDiff(Output):
 
     def _serialize_diff(self, commits_diff):
         data = {}
-        for pr, commits in commits_diff.items():
+        for pr, commits in commits_diff["addon"].items():
             data[pr.number] = pr.to_dict()
             data[pr.number]["missing_commits"] = [commit.hexsha for commit in commits]
         return data
@@ -686,7 +681,8 @@ class BranchesDiff(Output):
         lines_to_print = []
         fake_pr = None
         i = 0
-        for i, pr in enumerate(self.commits_diff, 1):
+        key = "addon"
+        for i, pr in enumerate(self.commits_diff[key], 1):
             if pr.number:
                 lines_to_print.append(
                     f"{i}) {bc.BOLD}{bc.OKBLUE}{pr.ref}{bc.END} "
@@ -705,20 +701,20 @@ class BranchesDiff(Output):
                 )
                 lines_to_print.append(f"\t=> Not ported: {pr_paths_not_ported}")
             lines_to_print.append(
-                f"\t=> {bc.BOLD}{bc.OKBLUE}{len(self.commits_diff[pr])} "
+                f"\t=> {bc.BOLD}{bc.OKBLUE}{len(self.commits_diff[key][pr])} "
                 f"commit(s){bc.END} not (fully) ported"
             )
             if pr.number:
                 lines_to_print.append(f"\t=> {pr.url}")
             if verbose or not pr.number:
-                for commit in self.commits_diff[pr]:
+                for commit in self.commits_diff[key][pr]:
                     lines_to_print.append(
                         f"\t\t{bc.DIM}{commit.hexsha[:8]} " f"{commit.summary}{bc.ENDD}"
                     )
         if fake_pr:
             # We have commits without PR, adapt the message
             i -= 1
-            nb_commits = len(self.commits_diff[fake_pr])
+            nb_commits = len(self.commits_diff[key][fake_pr])
             message = (
                 f"{bc.BOLD}{bc.OKBLUE}{i} pull request(s){bc.END} "
                 f"and {bc.BOLD}{bc.OKBLUE}{nb_commits} commit(s) w/o "
@@ -733,23 +729,100 @@ class BranchesDiff(Output):
                 f"{self.app.from_branch.ref()} to {self.app.to_branch.ref()}"
             )
         lines_to_print.insert(0, message)
-        if self.commits_diff:
+        if self.commits_diff[key]:
             lines_to_print.insert(1, "")
+        self._print("\n".join(lines_to_print))
+
+    def print_satellite_diff(self, verbose=False):
+        nb_prs = len(self.commits_diff["satellite"])
+        if not nb_prs:
+            return
+        self._print()
+        lines_to_print = []
+        msg = (
+            f"ℹ️  {nb_prs} other PRs related to {bc.OKBLUE}{self.app.addon}{bc.ENDC} "
+            "are also updating satellite modules/root files"
+        )
+        if verbose:
+            msg += ":"
+        lines_to_print.append(msg)
+        paths_ported = []
+        paths_not_ported = []
+        pr_paths_not_ported = sorted(
+            set(
+                itertools.chain.from_iterable(
+                    [pr.paths_not_ported for pr in self.commits_diff["satellite"]]
+                )
+            )
+        )
+        for path in pr_paths_not_ported:
+            path_exists = g.check_path_exists(
+                self.app.repo,
+                self.app.to_branch.ref(),
+                path,
+                rootdir=self.app.addons_rootdir and self.app.addons_rootdir.name,
+            )
+            if path_exists:
+                if verbose:
+                    lines_to_print.append(f"\t{bc.OKGREEN}- {path}{bc.END}")
+                paths_ported.append(path)
+            else:
+                paths_not_ported.append(path)
+        # Print the list of related modules/root files
+        if verbose:
+            if paths_not_ported:
+                # Two cases:
+                # - if we have PRs that could update already migrated modules
+                #   we list them (see above) while displaying only a counter for
+                #   not yet migrated modules.
+                if paths_ported:
+                    lines_to_print.append(
+                        f"\t{bc.DIM}- +{len(paths_not_ported)} modules/root files "
+                        f"not ported{bc.END}"
+                    )
+                # - if we get only PRs that could update non-migrated modules we
+                #   do not display a counter but an exaustive list of these modules.
+                else:
+                    for path in paths_not_ported:
+                        lines_to_print.append(f"\t{bc.DIM}- {path}{bc.END}")
+            if paths_ported:
+                lines_to_print.append("Think about running oca-port on these modules.")
         self._print("\n".join(lines_to_print))
 
     def get_commits_diff(self):
         """Returns the commits which do not exist in `to_branch`, grouped by
         their related Pull Request.
 
-        :return: a dict {PullRequest: {Commit: data, ...}, ...}
+        These PRs are then in turn grouped based on their impacted addons:
+            - if a PR is updating the analyzed module, it'll be put in 'addon' key
+            - if a PR is updating satellite module(s), it'll be put in 'satellite' key
+
+        :return: a dict {
+            'addon': {PullRequest: {Commit: data, ...}, ...},
+            'satellite': {PullRequest: {Commit: data, ...}, ...},
+        }
         """
         commits_by_pr = defaultdict(list)
+        fake_pr = g.PullRequest(*[""] * 6)
+        # 1st loop to collect original PRs and stack orphaned commits in a fake PR
         for commit in self.from_branch_path_commits:
             if commit in self.to_branch_all_commits:
                 self.app.cache.mark_commit_as_ported(commit.hexsha)
                 continue
-            # Get related Pull Request if any
-            pr = self._get_original_pr(commit)
+            # Get related Pull Request if any,
+            # or fallback on a fake PR to host orphaned commits
+            # This call has two effects:
+            #   - put in cache original PRs (so the 2nd loop is faster)
+            #   - stack orphaned commits in fake PR
+            self._get_original_pr(commit, fallback_pr=fake_pr)
+        # 2nd loop to actually analyze the content of commits/PRs
+        for commit in self.from_branch_path_commits:
+            if commit in self.to_branch_all_commits:
+                self.app.cache.mark_commit_as_ported(commit.hexsha)
+                continue
+            # Get related Pull Request if any,
+            # or fallback on a fake PR that hosts orphaned commits
+            pr = self._get_original_pr(commit, fallback_pr=fake_pr)
             if pr:
                 for pr_commit_sha in pr.commits:
                     try:
@@ -821,13 +894,17 @@ class BranchesDiff(Output):
                             break
                     else:
                         commits_by_pr[pr].append(pr_commit)
-            # No related PR: add the commit to the fake PR
-            else:
-                commits_by_pr[FAKE_PR].append(commit)
         # Sort PRs on the merge date (better to port them in the right order).
         # Do not return blacklisted PR.
-        sorted_commits_by_pr = {}
+        sorted_commits_by_pr = {
+            "addon": defaultdict(list),
+            "satellite": defaultdict(list),
+        }
         for pr in sorted(commits_by_pr, key=lambda pr: pr.merged_at or ""):
+            if self._is_pr_updating_addon(pr):
+                key = "addon"
+            else:
+                key = "satellite"
             blacklisted = self.app.storage.is_pr_blacklisted(pr.ref)
             if not blacklisted:
                 # TODO: Backward compat for old tracking only by number
@@ -838,18 +915,31 @@ class BranchesDiff(Output):
                 ) + f" blacklisted ({blacklisted}){bc.ENDD}"
                 self._print(msg)
                 continue
-            sorted_commits_by_pr[pr] = commits_by_pr[pr]
+            sorted_commits_by_pr[key][pr] = commits_by_pr[pr]
         return sorted_commits_by_pr
 
-    def _get_original_pr(self, commit: g.Commit):
-        """Return the original PR of a given commit."""
+    def _is_pr_updating_addon(self, pr):
+        """Check if a PR still needs to update the analyzed addon."""
+        for path in pr.paths_not_ported:
+            path_ = pathlib.Path(path)
+            if path_.name == self.app.addon:
+                return True
+        return False
+
+    def _get_original_pr(self, commit: g.Commit, fallback_pr=None):
+        """Return the original PR of a given commit.
+
+        If `fallback_pr` is provided, it'll be returned with the commit stacked in it.
+
+        This method is taking care of storing in cache the original PR of a commit.
+        """
         # Try to get the data from the user's cache first
         data = self.app.cache.get_pr_from_commit(commit.hexsha)
         if data:
             return g.PullRequest(**data)
         # Request GitHub to get them
         if not any("github.com" in remote.url for remote in self.app.repo.remotes):
-            return
+            return self._handle_fallback_pr(fallback_pr, commit)
         src_repo_name = self.app.source.repo or self.app.repo_name
         try:
             raw_data = self.app.github.get_original_pr(
@@ -860,7 +950,7 @@ class BranchesDiff(Output):
             )
         except requests.exceptions.ConnectionError:
             self._print("⚠️  Unable to detect original PR (connection error)")
-            return
+            return self._handle_fallback_pr(fallback_pr, commit)
         if raw_data:
             # Get all commits of the PR as they could update others addons
             # than the one the user is interested in.
@@ -882,3 +972,11 @@ class BranchesDiff(Output):
             }
             self.app.cache.store_commit_pr(commit.hexsha, data)
             return g.PullRequest(**data)
+        return self._handle_fallback_pr(fallback_pr, commit)
+
+    def _handle_fallback_pr(self, fallback_pr, commit):
+        # Fallback PR hosting orphaned commits
+        if fallback_pr:
+            if commit.hexsha not in fallback_pr.commits:
+                fallback_pr.commits.append(commit.hexsha)
+        return fallback_pr

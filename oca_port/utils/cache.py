@@ -207,7 +207,9 @@ class UserCache:
 
     def get_pr_from_commit(self, commit_sha: str):
         """Return the original PR data of a commit."""
-        pr_number = self._commits_to_port["commits"][commit_sha]["pr"]
+        pr_number = None
+        if commit_sha in self._commits_to_port["commits"]:
+            pr_number = self._commits_to_port["commits"][commit_sha]["pr"]
         if pr_number:
             return self._commits_to_port["pull_requests"][str(pr_number)]
         return {}
