@@ -117,16 +117,16 @@ API
 You can also use `oca-port` as a Python package:
 
 ```python
->>> import oca_port
+>>> import oca_port,json
 >>> app = oca_port.App(
 ...     source="origin/14.0",
 ...     target="origin/16.0",
 ...     addon_path="stock_move_auto_assign",
-...     upstream_org": "OCA",
-...     repo_path": "/home/odoo/OCA/stock-logistics-warehouse",
-...     output": "json",
-...     fetch": True,
-...     github_token: "<TOKEN>"
+...     upstream_org="OCA",
+...     repo_path="/home/odoo/OCA/stock-logistics-warehouse",
+...     output="json",
+...     fetch=True,
+...     github_token="<TOKEN>"
 ... )
 >>> json_data = app.run()
 >>> data = json.loads(json_data)
