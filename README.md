@@ -17,7 +17,7 @@ Installing
 
 To automatically apply code patterns with [odoo-module-migrator](https://github.com/OCA/odoo-module-migrator), install library with below syntax:
 
-    $ pipx install git+https://github.com/OCA/odoo-module-migrator.git@master
+    $ pipx inject --include-deps  oca-port git+https://github.com/OCA/odoo-module-migrator.git@master
 
 Using
 -----
