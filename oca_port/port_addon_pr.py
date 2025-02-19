@@ -942,12 +942,23 @@ class BranchesDiff(Output):
             return self._handle_fallback_pr(fallback_pr, commit)
         src_repo_name = self.app.source.repo or self.app.repo_name
         try:
+            # 1st attempt: detect original PR from source branch
+            # (e.g. if source branch == 'master')
             raw_data = self.app.github.get_original_pr(
                 self.app.upstream_org,
                 src_repo_name,
-                self.app.from_branch.name,
+                self.app.source.branch,
                 commit.hexsha,
             )
+            if not raw_data:
+                # 2nd attempt: detect original PR from source version
+                # (e.g. if working from a specific branch as source)
+                raw_data = self.app.github.get_original_pr(
+                    self.app.upstream_org,
+                    src_repo_name,
+                    self.app.source_version,
+                    commit.hexsha,
+                )
         except requests.exceptions.ConnectionError:
             self._print("⚠️  Unable to detect original PR (connection error)")
             return self._handle_fallback_pr(fallback_pr, commit)
