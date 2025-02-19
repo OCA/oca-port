@@ -93,4 +93,7 @@ class GitHub:
                 ).strip()
             except subprocess.SubprocessError:
                 pass
+            except FileNotFoundError:
+                # gh not intalled or not in path
+                pass
         return token
