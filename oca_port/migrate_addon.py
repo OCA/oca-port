@@ -2,6 +2,7 @@
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
 import os
+import git_filter_repo as gfr
 import tempfile
 import urllib.parse
 from importlib import metadata
@@ -10,7 +11,7 @@ import click
 
 from .port_addon_pr import PortAddonPullRequest
 from .utils import git as g
-from .utils.misc import Output, bcolors as bc
+from .utils.misc import Output, bcolors as bc, update_terms_in_directory
 
 MIG_BRANCH_NAME = "{branch}-mig-{addon}"
 MIG_MERGE_COMMITS_URL = (
@@ -80,49 +81,32 @@ class MigrateAddon(Output):
             (
                 self.app.destination.branch
                 or MIG_BRANCH_NAME.format(
-                    branch=self.app.target_version, addon=self.app.addon
+                    branch=self.app.target_version, addon=self.app.source.addon
                 )
             ),
         )
 
     def run(self):
-        if self.app.check_addon_exists_to_branch():
+        migrated = self._check_addon_already_migrated()
+        blacklisted = self._check_addon_blacklisted()
+        if migrated or blacklisted:
             if self.app.non_interactive or self.app.dry_run:
                 if self.app.output:
-                    return False, self._render_output(self.app.output, {})
+                    return False, self._render_output(self.app.output, self._results)
             return False, None
-        blacklisted = self.app.storage.is_addon_blacklisted()
-        if blacklisted:
-            self._print(
-                f"{bc.DIM}Migration of {bc.BOLD}{self.app.addon}{bc.END} "
-                f"{bc.DIM}to {self.app.to_branch.name} "
-                f"blacklisted ({blacklisted}){bc.ENDD}"
-            )
-            return False, None
-        # Looking for an existing PR to review
-        existing_pr = None
-        if self.app.upstream_org and self.app.repo_name:
-            existing_pr = self.app.github.search_migration_pr(
-                from_org=self.app.upstream_org,
-                repo_name=self.app.repo_name,
-                branch=self.app.target.branch,
-                addon=self.app.addon,
-            )
-        if existing_pr:
-            self._print(
-                f"⚠️\tMigration of {bc.BOLD}{self.app.addon}{bc.END} "
-                f"seems handled in this PR:\n"
-                f"\t\t{bc.BOLD}{existing_pr.url}{bc.END} (by {existing_pr.author})\n"
-                "\tWe invite you to review this PR instead of opening a new one. "
-                "Thank you!"
-            )
-            self._results["results"]["existing_pr"] = existing_pr.to_dict(number=True)
+        # At this stage, the addon could be migrated
+        self._detect_existing_pr()
         if self.app.non_interactive or self.app.dry_run:
-            self._print(
-                f"ℹ️  {bc.BOLD}{self.app.addon}{bc.END} can be migrated "
+            msg = (
+                f"ℹ️  {bc.BOLD}{self.app.source.addon}{bc.END} can be migrated "
                 f"from {bc.BOLD}{self.app.source_version}{bc.END} "
-                f"to {bc.BOLD}{self.app.target_version}{bc.END}."
+                f"to {bc.BOLD}{self.app.target_version}{bc.END}"
             )
+            if self.app.source.addon_path != self.app.target.addon_path:
+                msg += f" and moved to {bc.BOLD}{self.app.target.addon_path}{bc.END}"
+            else:
+                msg += "."
+            self._print(msg)
             # If an output is defined we return the result in the expected format
             if self.app.output:
                 return True, self._render_output(self.app.output, self._results)
@@ -135,12 +119,24 @@ class MigrateAddon(Output):
         if self.app.repo.is_dirty():
             # Same error message than git
             raise ValueError("You have unstaged changes. Please commit or stash them.")
+        # Start the migration
         self._checkout_base_branch()
+        if self.app.target.addon_path.exists():
+            # Corner case: target addon already exists as local folder, abort
+            self._print(
+                f"{bc.BOLD}{self.app.target.addon}{bc.END} local directory "
+                "(uncommitted) already exists, aborting."
+            )
+            return False, None
         confirm = (
-            f"Migrate {bc.BOLD}{self.app.addon}{bc.END} "
+            f"Migrate {bc.BOLD}{self.app.source.addon}{bc.END} "
             f"from {bc.BOLD}{self.app.source_version}{bc.END} "
-            f"to {bc.BOLD}{self.app.target_version}{bc.END}?"
+            f"to {bc.BOLD}{self.app.target_version}{bc.END}"
         )
+        if self.app.source.addon_path != self.app.target.addon_path:
+            confirm += f" and move it to {bc.BOLD}{self.app.target.addon_path}{bc.END}?"
+        else:
+            confirm += "?"
         if not click.confirm(confirm):
             self.app.storage.blacklist_addon(confirm=True)
             if not self.app.storage.dirty:
@@ -152,15 +148,19 @@ class MigrateAddon(Output):
                 self.app.storage.commit()
                 self._print_tips(blacklisted=True)
                 return False, None
+            # Port git history
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
+            # Handle module move/renaming
+            if self.app.source.addon_path != self.app.target.addon_path:
+                self._move_addon()
             # Run pre-commit
             updated_files = g.run_pre_commit(self.app.repo)
             if updated_files:
                 g.commit(
                     self.app.repo,
-                    msg=f"[IMP] {self.app.addon}: pre-commit auto fixes",
+                    msg=f"[IMP] {self.app.target.addon}: pre-commit auto fixes",
                     paths=updated_files,
                 )
             # Adapt code thanks to odoo-module-migrator (if installed)
@@ -174,6 +174,74 @@ class MigrateAddon(Output):
         PortAddonPullRequest(self.app, push_branch=False).run()
         self._print_tips(adapted=adapted)
         return True, None
+
+    def _check_addon_already_migrated(self):
+        # if local:
+        #     # Check if addon exists as a local folder
+        #     # FIXME: this check should occurs once repo is checkout on target branch
+        #     source_addon_exists = self.app.source.addon_path.exists()
+        #     target_addon_exists = self.app.target.addon_path.exists()
+        #     if source_addon_exists or target_addon_exists:
+        #         addon = (
+        #             self.app.source.addon
+        #             if source_addon_exists
+        #             else self.app.target.addon
+        #         )
+        #         self._print(
+        #             f"{bc.BOLD}{addon}{bc.END} local directory (uncommitted) "
+        #             "already exists, aborting."
+        #         )
+        #         return False
+        # Check if addon exists in git trees (=> already migrated)
+        source_addon_exists = self.app._check_addon_exists(
+            self.app.source, self.app.to_branch
+        )
+        target_addon_exists = self.app._check_addon_exists(
+            self.app.target, self.app.to_branch
+        )
+        if source_addon_exists or target_addon_exists:
+            addon = (
+                self.app.source.addon if source_addon_exists else self.app.target.addon
+            )
+            self._results = {}  # Nothing to report
+            self._print(
+                f"{bc.BOLD}{addon}{bc.END} is already migrated "
+                f"on {bc.BOLD}{self.app.to_branch.ref()}{bc.END}, "
+                "aborting."
+            )
+            return True
+        return False
+
+    def _check_addon_blacklisted(self):
+        blacklisted = self.app.storage.is_addon_blacklisted()
+        if blacklisted:
+            self._results["results"]["blacklisted"] = True
+            self._print(
+                f"{bc.DIM}Migration of {bc.BOLD}{self.app.source.addon}{bc.END} "
+                f"{bc.DIM}to {self.app.to_branch.name} "
+                f"blacklisted ({blacklisted}){bc.ENDD}"
+            )
+        return blacklisted
+
+    def _detect_existing_pr(self):
+        """Looking for an existing PR to review."""
+        existing_pr = None
+        if self.app.upstream_org and self.app.repo_name:
+            existing_pr = self.app.github.search_migration_pr(
+                from_org=self.app.upstream_org,
+                repo_name=self.app.repo_name,
+                branch=self.app.target.branch,
+                addon=self.app.source.addon,
+            )
+        if existing_pr:
+            self._print(
+                f"⚠️\tMigration of {bc.BOLD}{self.app.source.addon}{bc.END} "
+                f"seems handled in this PR:\n"
+                f"\t\t{bc.BOLD}{existing_pr.url}{bc.END} (by {existing_pr.author})\n"
+                "\tWe invite you to review this PR instead of opening a new one. "
+                "Thank you!"
+            )
+            self._results["results"]["existing_pr"] = existing_pr.to_dict(number=True)
 
     def _checkout_base_branch(self):
         # Ensure to not start to work from a working branch
@@ -217,10 +285,11 @@ class MigrateAddon(Output):
             patches_dir,
             f"{self.app.to_branch.ref()}..{self.app.from_branch.ref()}",
             "--",
-            self.app.addon_path,
+            self.app.source.addon_path,
         )
 
     def _apply_patches(self, patches_dir):
+        # FIXME: rework patches paths if module has been moved/renamed
         patches = [
             os.path.join(patches_dir, f) for f in sorted(os.listdir(patches_dir))
         ]
@@ -228,15 +297,47 @@ class MigrateAddon(Output):
         print(f"\tApply {len(patches)} patches...")
         self.app.repo.git.am("-3", "--keep", *patches)
         print(
-            f"\t\tCommits history of {bc.BOLD}{self.app.addon}{bc.END} "
+            f"\t\tCommits history of {bc.BOLD}{self.app.source.addon}{bc.END} "
             f"has been migrated."
         )
+
+    def _move_addon(self):
+        print(
+            f"\Move module {bc.BOLD}{self.app.source.addon_path}{bc.END} "
+            f"to {bc.BOLD}{self.app.target.addon_path}{bc.END}..."
+        )
+        path_rename = f"{self.app.source.addon_path}:{self.app.target.addon_path}"
+        # Limit the rewriting of git history on current branch
+        refs = f"{self.app.target.ref}..{self.mig_branch.name}"
+        args = gfr.FilteringOptions.parse_args(
+            [
+                f"--path-rename={path_rename}",
+                "--refs",
+                refs,
+                "--force",
+            ]
+        )
+        filter_ = gfr.RepoFilter(args)
+        filter_.run()
+        if self.app.source.addon != self.app.target.addon:
+            update_terms_in_directory(
+                self.app.target.addon_path,
+                self.app.source.addon,
+                self.app.target.addon,
+            )
+        self.app.repo.git.add(self.app.target.addon_path)
+        if self.app.repo.is_dirty():
+            self.app.repo.git.commit(
+                "-m",
+                f"[MOV] Move {self.app.source.addon} to {self.app.target.addon}",
+                "--no-verify",
+            )
 
     def _print_tips(self, blacklisted=False, adapted=False):
         mig_tasks_url = MIG_TASKS_URL.format(version=self.app.target_version)
         pr_title_encoded = urllib.parse.quote(
             MIG_NEW_PR_TITLE.format(
-                version=self.app.target_version, addon=self.app.addon
+                version=self.app.target_version, addon=self.app.source.addon
             )
         )
         new_pr_url = MIG_NEW_PR_URL.format(
@@ -275,7 +376,7 @@ class MigrateAddon(Output):
         tips = steps.format(
             from_org=self.app.upstream_org,
             repo_name=self.app.repo_name,
-            addon=self.app.addon,
+            addon=self.app.source.addon,
             version=self.app.target_version,
             remote=self.app.destination.remote or "YOUR_REMOTE",
             mig_branch=self.mig_branch.name,
@@ -298,10 +399,10 @@ class MigrateAddon(Output):
 
         try:
             migration = Migration(
-                self.app.addons_rootdir,
+                self.app.target.addons_rootdir,
                 self.app.source_version,
                 self.app.target_version,
-                module_names=[self.app.addon],
+                module_names=[self.app.target.addon],
                 pre_commit=False,
             )
             migration.run()

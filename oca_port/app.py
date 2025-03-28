@@ -27,6 +27,8 @@ class App(Output):
             string representation of the target branch, e.g. 'origin/16.0'
         addon_path:
             the path of the addon to process
+        target_addon_path:
+            the path of the renamed addon to process on target branch (optional)
         destination:
             string representation of the destination branch,
             e.g. 'camptocamp/16.0-addon-dev'
@@ -62,6 +64,7 @@ class App(Output):
     source: str
     target: str
     addon_path: str
+    target_addon_path: str = None
     destination: str = None
     source_version: str = None
     target_version: str = None
@@ -110,7 +113,7 @@ class App(Output):
         # GitHub API helper
         self.github = GitHub(self.github_token)
         # Initialize storage & cache
-        self.storage = utils.storage.InputStorage(self.to_branch, self.addon)
+        self.storage = utils.storage.InputStorage(self.to_branch, self.target.addon)
         self.cache = utils.cache.UserCacheFactory(self).build()
 
     def _handle_odoo_versions(self):
@@ -148,20 +151,13 @@ class App(Output):
         if self.repo.is_dirty():
             # Same error message than git
             raise ValueError("You have unstaged changes. Please commit or stash them.")
-
-        # Module name
-        self.addon_path = pathlib.Path(self.addon_path)
-        self.addons_rootdir = self.addon_path.parent
-        self.addon = self.addon_path.name
-
-        # Convert them to full remote info if needed
+        # Prepare source/target/destination
         for key in ("source", "target", "destination"):
             value = getattr(self, key)
             if value and isinstance(value, str):
                 setattr(self, key, extract_ref_info(self.repo, key, value))
         # Check Odoo versions from source and target branches and parameters
         self._handle_odoo_versions()
-
         # Always provide a destination:
         if not self.destination:
             self.destination = extract_ref_info(self.repo, "destination", "")
@@ -180,7 +176,21 @@ class App(Output):
                     or self.destination.branch == self.target_version
                 ):
                     self.destination.branch = None
-
+        # Module name(s)
+        self.source["addon_path"] = pathlib.Path(self.addon_path)
+        self.target["addon_path"] = self.destination["addon_path"] = pathlib.Path(
+            self.target_addon_path or self.addon_path
+        )
+        self.source["addons_rootdir"] = self.source.addon_path.parent
+        self.target["addons_rootdir"] = self.destination["addons_rootdir"] = (
+            self.target.addon_path.parent
+            if self.target.addon_path
+            else self.source.addons_rootdir
+        )
+        self.source["addon"] = self.source.addon_path.name
+        self.target["addon"] = self.destination["addon"] = (
+            self.target.addon_path.name if self.target.addon_path else self.source.addon
+        )
         # Handle with repo_path and repo_name
         self.repo_path = pathlib.Path(self.repo_path)
         self.repo_name = (
@@ -266,19 +276,25 @@ class App(Output):
             raise ValueError(f"Ref {branch} doesn't exist.")
         return False
 
-    def _check_addon_exists(self, branch, raise_exc=False):
+    def _check_addon_exists(self, ref, branch, raise_exc=False):
+        """Returns True if an addon exists on `branch`."""
         repo = self.repo
         addons_tree = repo.commit(branch.ref()).tree
-        if self.addons_rootdir and self.addons_rootdir.name:
-            addons_tree /= str(self.addons_rootdir)
+        if ref.addons_rootdir and ref.addons_rootdir.name:
+            try:
+                addons_tree /= str(ref.addons_rootdir)
+            except KeyError:
+                # Skip if one directory in rootdir doesn't exist
+                # e.g. 'b' missing in rootdir 'a/b'.
+                pass
         branch_addons = [t.path for t in addons_tree.trees]
-        if str(self.addon_path) not in branch_addons:
+        if str(ref.addon_path) not in branch_addons:
             if not raise_exc:
                 return False
-            error = f"{self.addon_path} does not exist on {branch.ref()}"
+            error = f"{ref.addon_path} does not exist on {branch.ref()}"
             if self.cli:
                 error = (
-                    f"{bc.FAIL}{self.addon_path}{bc.ENDC} "
+                    f"{bc.FAIL}{ref.addon_path}{bc.ENDC} "
                     f"does not exist on {branch.ref()}"
                 )
             raise ValueError(error)
@@ -286,11 +302,15 @@ class App(Output):
 
     def check_addon_exists_from_branch(self, raise_exc=False):
         """Check that `addon` exists on the source branch`."""
-        return self._check_addon_exists(self.from_branch, raise_exc=raise_exc)
+        return self._check_addon_exists(
+            self.source, self.from_branch, raise_exc=raise_exc
+        )
 
     def check_addon_exists_to_branch(self, raise_exc=False):
         """Check that `addon` exists on the target branch`."""
-        return self._check_addon_exists(self.to_branch, raise_exc=raise_exc)
+        return self._check_addon_exists(
+            self.target, self.to_branch, raise_exc=raise_exc
+        )
 
     def run(self):
         """Run 'oca-port' to migrate an addon or to port its pull requests."""

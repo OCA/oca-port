@@ -22,16 +22,21 @@ class CommonCase(unittest.TestCase):
         cls.source2 = "origin/16.0"
         cls.target1 = "origin/16.0"
         cls.target2 = "origin/17.0"
+        cls.target3 = "origin/18.0"
         cls.dest_branch = "dev"
         cls.destination = f"{cls.fork_org}/{cls.dest_branch}"
         cls.addon = "my_module"
+        cls.target_addon = "my_module_renamed"
         cls.no_cache = True
 
     def setUp(self):
         # Create a temporary Git repository
         self.repo_upstream_path = self._create_tmp_git_repository()
-        self.module_path = os.path.join(self.repo_upstream_path, self.addon)
-        self.manifest_path = os.path.join(self.module_path, "__manifest__.py")
+        self.addon_path = os.path.join(self.repo_upstream_path, self.addon)
+        self.target_addon_path = os.path.join(
+            self.repo_upstream_path, self.target_addon
+        )
+        self.manifest_path = os.path.join(self.addon_path, "__manifest__.py")
         self._fill_git_repository(self.repo_upstream_path)
         # By cloning the first repository this will set an 'origin' remote
         self.repo_path = self._clone_tmp_git_repository(self.repo_upstream_path)
@@ -65,10 +70,10 @@ class CommonCase(unittest.TestCase):
         # Commit a file in '15.0'
         branch1 = self.source1.split("/")[1]
         repo.git.checkout("--orphan", branch1)
-        self._create_module(self.module_path)
-        repo.index.add(self.module_path)
+        self._create_module(self.addon_path)
+        repo.index.add(self.addon_path)
         commit = repo.index.commit(f"[ADD] {self.addon}")
-        # Port the commit from 'branch1' to 'branch2'
+        # Port the commit from 15.0 to 16.0
         branch2 = self.source2.split("/")[1]
         repo.git.checkout("--orphan", branch2)
         repo.git.reset("--hard")
@@ -76,11 +81,20 @@ class CommonCase(unittest.TestCase):
         # no idea why.
         time.sleep(1)
         repo.git.cherry_pick(commit.hexsha)
-        # Create an empty 'branch3'
+        # Create an empty branch 17.0
         branch3 = self.target2.split("/")[1]
         repo.git.checkout("--orphan", branch3)
         repo.git.reset("--hard")
         repo.git.commit("-m", "Init", "--allow-empty")
+        # Port the commit from 15.0 to 18.0
+        branch3 = self.target3.split("/")[1]
+        repo.git.checkout("--orphan", branch3)
+        repo.git.reset("--hard")
+        time.sleep(1)
+        repo.git.cherry_pick(commit.hexsha)
+        # Rename the module on 18.0
+        repo.git.mv(self.addon, self.target_addon)
+        repo.git.commit("-m", f"Rename {self.addon} to {self.target_addon}")
 
     def _create_module(self, module):
         tpl_manifest_path = os.path.join(
