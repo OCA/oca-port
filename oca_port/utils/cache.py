@@ -120,7 +120,7 @@ class UserCache:
     def _get_ported_commits_path(self):
         """Return the file path storing ported commit."""
         file_name = (
-            f"{self.app.addon}_{self.app.source.repo}_{self.app.from_branch.name}_"
+            f"{self.app.source.addon}_{self.app.source.repo}_{self.app.from_branch.name}_"
             f"to_{self.app.target.repo}_{self.app.to_branch.name}.list"
         )
         return self.dir_path.joinpath(
@@ -132,7 +132,7 @@ class UserCache:
     def _get_commits_to_port_path(self):
         """Return the file path storing cached data of commits to port."""
         file_name = (
-            f"{self.app.addon}_{self.app.source.repo}_{self.app.from_branch.name}_"
+            f"{self.app.source.addon}_{self.app.source.repo}_{self.app.from_branch.name}_"
             f"to_{self.app.target.repo}_{self.app.to_branch.name}.json"
         )
         return self.dir_path.joinpath(
