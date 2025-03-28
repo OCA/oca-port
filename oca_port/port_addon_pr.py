@@ -81,7 +81,7 @@ class PortAddonPullRequest(Output):
                     return False, self._render_output(self.app.output, {})
             return False, None
         self._print(
-            f"{bc.BOLD}{self.app.addon}{bc.END} already exists "
+            f"{bc.BOLD}{self.app.target.addon}{bc.END} already exists "
             f"on {bc.BOLD}{self.app.to_branch.ref()}{bc.END}, "
             "checking PRs to port..."
         )
@@ -130,7 +130,7 @@ class PortAddonPullRequest(Output):
             h = hashlib.shake_256("-".join(commits_to_port).encode())
             key = h.hexdigest(3)
             dest_branch_name = PR_BRANCH_NAME.format(
-                addon=self.app.addon,
+                addon=self.app.target.addon,
                 source_version=self.app.source_version,
                 target_version=self.app.target_version,
                 key=key,
@@ -163,9 +163,12 @@ class PortAddonPullRequest(Output):
                 )
                 if not click.confirm(confirm):
                     msg = "ℹ️  To resume the work from this branch, relaunch with:\n\n"
+                    source_and_target = f"{self.app.source.addon_path}"
+                    if self.app.source.addon_path != self.app.target.addon_path:
+                        source_and_target += f" {self.app.target.addon_path}"
                     cmd = (
                         f"\t{bc.DIM}oca-port {self.app.source.ref} "
-                        f"{dest_branch_name} {self.app.addon_path} %s{bc.END}"
+                        f"{dest_branch_name} {source_and_target} %s{bc.END}"
                     )
                     opts = []
                     if self.app.source.branch != self.app.source_version:
@@ -233,12 +236,12 @@ class PortAddonPullRequest(Output):
         return True
 
     def _get_session_name(self):
-        return f"{self.app.addon}-{self.app.destination.branch}"
+        return f"{self.app.source.addon}-{self.app.destination.branch}"
 
     def _init_session(self):
         session = Session(self.app, self._get_session_name())
         data = session.get_data()
-        data.setdefault("addon", self.app.addon)
+        data.setdefault("addon", self.app.source.addon)
         data.setdefault("repo_name", self.app.repo_name)
         data.setdefault("pull_requests", {})
         session.set_data(data)
@@ -310,7 +313,7 @@ class PortAddonPullRequest(Output):
         if self.app.storage.dirty:
             pr_refs = ", ".join([str(pr["number"]) for pr in blacklisted.values()])
             self.app.storage.commit(
-                msg=f"oca-port: blacklist PR(s) {pr_refs} for {self.app.addon}"
+                msg=f"oca-port: blacklist PR(s) {pr_refs} for {self.app.target.addon}"
             )
 
     def _print_wip_session(self):
@@ -515,7 +518,7 @@ class PortAddonPullRequest(Output):
         title = body = ""
         if len(processed_prs) > 1:
             title = (
-                f"[{self.app.target_version}][FW] {self.app.addon}: multiple ports "
+                f"[{self.app.target_version}][FW] {self.app.target.addon}: multiple ports "
                 f"from {self.app.source_version}"
             )
         if len(processed_prs) == 1:
@@ -607,18 +610,21 @@ class BranchesDiff(Output):
 
     def __init__(self, app):
         self.app = app
-        self.path = self.app.addon_path
         self.from_branch_path_commits, _ = self._get_branch_commits(
-            self.app.from_branch.ref(), self.path
+            self.app.from_branch.ref(),
+            self.app.source.addons_rootdir,
+            self.app.source.addon_path,
         )
         self.from_branch_all_commits, _ = self._get_branch_commits(
-            self.app.from_branch.ref()
+            self.app.from_branch.ref(), self.app.source.addons_rootdir
         )
         self.to_branch_path_commits, _ = self._get_branch_commits(
-            self.app.to_branch.ref(), self.path
+            self.app.to_branch.ref(),
+            self.app.target.addons_rootdir,
+            self.app.target.addon_path,
         )
         self.to_branch_all_commits, _ = self._get_branch_commits(
-            self.app.to_branch.ref()
+            self.app.to_branch.ref(), self.app.target.addons_rootdir
         )
         self.commits_diff = self.get_commits_diff()
         self.serialized_diff = self._serialize_diff(self.commits_diff)
@@ -632,7 +638,7 @@ class BranchesDiff(Output):
             data[pr.number]["missing_commits"] = [commit.hexsha for commit in commits]
         return data
 
-    def _get_branch_commits(self, branch, path="."):
+    def _get_branch_commits(self, branch, rootdir, path="."):
         """Get commits from the local repository for the given `branch`.
 
         An optional `path` parameter can be set to limit commits to a given folder.
@@ -649,9 +655,7 @@ class BranchesDiff(Output):
         for commit in commits:
             if self.app.cache.is_commit_ported(commit.hexsha):
                 continue
-            com = g.Commit(
-                commit, addons_path=self.app.addons_rootdir, cache=self.app.cache
-            )
+            com = g.Commit(commit, addons_path=rootdir, cache=self.app.cache)
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
@@ -718,14 +722,14 @@ class BranchesDiff(Output):
             message = (
                 f"{bc.BOLD}{bc.OKBLUE}{i} pull request(s){bc.END} "
                 f"and {bc.BOLD}{bc.OKBLUE}{nb_commits} commit(s) w/o "
-                f"PR{bc.END} related to '{bc.OKBLUE}{self.path}"
+                f"PR{bc.END} related to '{bc.OKBLUE}{self.app.source.addon_path}"
                 f"{bc.ENDC}' to port from {self.app.from_branch.ref()} "
                 f"to {self.app.to_branch.ref()}"
             )
         else:
             message = (
                 f"{bc.BOLD}{bc.OKBLUE}{i} pull request(s){bc.END} "
-                f"related to '{bc.OKBLUE}{self.path}{bc.ENDC}' to port from "
+                f"related to '{bc.OKBLUE}{self.app.source.addon_path}{bc.ENDC}' to port from "
                 f"{self.app.from_branch.ref()} to {self.app.to_branch.ref()}"
             )
         lines_to_print.insert(0, message)
@@ -740,7 +744,7 @@ class BranchesDiff(Output):
         self._print()
         lines_to_print = []
         msg = (
-            f"ℹ️  {nb_prs} other PRs related to {bc.OKBLUE}{self.app.addon}{bc.ENDC} "
+            f"ℹ️  {nb_prs} other PRs related to {bc.OKBLUE}{self.app.source.addon}{bc.ENDC} "
             "are also updating satellite modules/root files"
         )
         if verbose:
@@ -760,7 +764,8 @@ class BranchesDiff(Output):
                 self.app.repo,
                 self.app.to_branch.ref(),
                 path,
-                rootdir=self.app.addons_rootdir and self.app.addons_rootdir.name,
+                rootdir=self.app.source.addons_rootdir
+                and self.app.source.addons_rootdir.name,
             )
             if path_exists:
                 if verbose:
@@ -833,7 +838,7 @@ class BranchesDiff(Output):
                         continue
                     pr_commit = g.Commit(
                         raw_commit,
-                        addons_path=self.app.addons_rootdir,
+                        addons_path=self.app.source.addons_rootdir,
                         cache=self.app.cache,
                     )
                     if self._skip_commit(pr_commit):
@@ -922,7 +927,7 @@ class BranchesDiff(Output):
         """Check if a PR still needs to update the analyzed addon."""
         for path in pr.paths_not_ported:
             path_ = pathlib.Path(path)
-            if path_.name == self.app.addon:
+            if path_.name == self.app.source.addon:
                 return True
         return False
 
