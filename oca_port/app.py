@@ -145,8 +145,9 @@ class App(Output):
     def _prepare_parameters(self):
         # Handle Git repository
         self.repo = git.Repo(self.repo_path)
-        if self.repo.is_dirty(untracked_files=True):
-            raise ValueError("changes not committed detected in this repository.")
+        if self.repo.is_dirty():
+            # Same error message than git
+            raise ValueError("You have unstaged changes. Please commit or stash them.")
 
         # Module name
         self.addon_path = pathlib.Path(self.addon_path)
