@@ -132,6 +132,10 @@ class MigrateAddon(Output):
                 # Allocate 110 for 'PortAddonPullRequest'.
                 raise SystemExit(100)
             return True, None
+        if self.app.repo.is_dirty():
+            # Same error message than git
+            raise ValueError("You have unstaged changes. Please commit or stash them.")
+        self._checkout_base_branch()
         confirm = (
             f"Migrate {bc.BOLD}{self.app.addon}{bc.END} "
             f"from {bc.BOLD}{self.app.source_version}{bc.END} "
@@ -141,9 +145,6 @@ class MigrateAddon(Output):
             self.app.storage.blacklist_addon(confirm=True)
             if not self.app.storage.dirty:
                 return False, None
-        if self.app.repo.untracked_files:
-            raise click.ClickException("Untracked files detected, abort")
-        self._checkout_base_branch()
         adapted = False
         if self._create_mig_branch():
             # Case where the addon shouldn't be ported (blacklisted)
