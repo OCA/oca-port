@@ -760,7 +760,7 @@ class BranchesDiff(Output):
                 self.app.repo,
                 self.app.to_branch.ref(),
                 path,
-                rootdir=self.app.addons_rootdir and self.app.addons_rootdir.name,
+                rootdir=self.app.addons_rootdir and str(self.app.addons_rootdir),
             )
             if path_exists:
                 if verbose:
