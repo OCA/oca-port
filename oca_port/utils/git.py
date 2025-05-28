@@ -293,9 +293,12 @@ class PullRequest(abc.Hashable):
         return data
 
 
-def run_pre_commit(repo, addon, commit=True, hook=None):
-    # Run pre-commit
-    print(f"\tRun {bc.BOLD}pre-commit{bc.END} and commit changes if any...")
+def run_pre_commit(repo, hook=None):
+    """Run pre-commit and returns updated file paths."""
+    print(f"\tRun {bc.BOLD}pre-commit{bc.END}...")
+    if repo.is_dirty(index=False):
+        raise RuntimeError("Unstaged changes detected. pre-commit execution aborted.")
+    untracked_files = set(repo.untracked_files)
     # First ensure that 'pre-commit' is initialized for the repository,
     # then run it (without checking the return code on purpose)
     subprocess.check_call("pre-commit install", shell=True)
@@ -303,12 +306,17 @@ def run_pre_commit(repo, addon, commit=True, hook=None):
         subprocess.run(f"pre-commit run {hook}", shell=True)
     else:
         subprocess.run("pre-commit run -a", shell=True)
-    if repo.untracked_files or repo.is_dirty():
-        repo.git.add("-A")
-        if commit:
-            repo.git.commit(
-                "-m", f"[IMP] {addon}: pre-commit auto fixes", "--no-verify"
-            )
+    new_untracked_files = set(repo.untracked_files)
+    changed_files = {diff.a_path for diff in repo.index.diff(None)}
+    updated_files = (new_untracked_files | changed_files) - untracked_files
+    return updated_files
+
+
+def commit(repo, msg, paths=None, no_verify=True):
+    """Commit `paths` (or all files if not set)."""
+    paths = paths or []
+    repo.git.add("-A", *paths)
+    repo.git.commit("-m", msg, "--no-verify" if no_verify else "")
 
 
 def get_changed_paths(repo, modified=True, staged=True):
