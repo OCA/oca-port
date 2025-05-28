@@ -162,7 +162,12 @@ class MigrateAddon(Output):
             except metadata.PackageNotFoundError:
                 pass
         if not adapted:
-            g.run_pre_commit(self.app.repo, self.app.addon)
+            updated_files = g.run_pre_commit(self.app.repo)
+            g.commit(
+                self.app.repo,
+                msg=f"[IMP] {self.app.target.addon}: pre-commit auto fixes",
+                paths=updated_files,
+            )
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(self.app, push_branch=False).run()

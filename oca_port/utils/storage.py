@@ -118,6 +118,11 @@ class InputStorage:
         # Commit all changes under ./.oca-port
         self.repo.index.add(self.storage_dirname)
         if self.repo.is_dirty():
-            g.run_pre_commit(self.repo, self.addon, commit=False, hook="prettier")
-            self.repo.index.commit(msg or f"oca-port: store '{self.addon}' data")
+            updated_files = g.run_pre_commit(self.repo, hook="prettier")
+            updated_files.add(self.storage_dirname)
+            g.commit(
+                self.repo,
+                msg or f"oca-port: store '{self.addon}' data",
+                paths=updated_files,
+            )
             self.dirty = False
