@@ -2,7 +2,7 @@
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
 import os
-import subprocess
+import git_filter_repo as gfr
 import tempfile
 import urllib.parse
 from importlib import metadata
@@ -103,7 +103,7 @@ class MigrateAddon(Output):
                 f"to {bc.BOLD}{self.app.target_version}{bc.END}"
             )
             if self.app.source.addon_path != self.app.target.addon_path:
-                msg += f" and renamed to {bc.BOLD}{self.app.target.addon}{bc.END}"
+                msg += f" and moved to {bc.BOLD}{self.app.target.addon_path}{bc.END}"
             else:
                 msg += "."
             self._print(msg)
@@ -134,7 +134,7 @@ class MigrateAddon(Output):
             f"to {bc.BOLD}{self.app.target_version}{bc.END}"
         )
         if self.app.source.addon_path != self.app.target.addon_path:
-            confirm += f" and rename it to {bc.BOLD}{self.app.target.addon}{bc.END}?"
+            confirm += f" and move it to {bc.BOLD}{self.app.target.addon_path}{bc.END}?"
         else:
             confirm += "?"
         if not click.confirm(confirm):
@@ -152,9 +152,9 @@ class MigrateAddon(Output):
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
-            # Handle module renaming
+            # Handle module move/renaming
             if self.app.source.addon_path != self.app.target.addon_path:
-                self._rename_addon()
+                self._move_addon()
             # Run pre-commit
             updated_files = g.run_pre_commit(self.app.repo)
             if updated_files:
@@ -289,6 +289,7 @@ class MigrateAddon(Output):
         )
 
     def _apply_patches(self, patches_dir):
+        # FIXME: rework patches paths if module has been moved/renamed
         patches = [
             os.path.join(patches_dir, f) for f in sorted(os.listdir(patches_dir))
         ]
@@ -300,30 +301,37 @@ class MigrateAddon(Output):
             f"has been migrated."
         )
 
-    def _rename_addon(self):
+    def _move_addon(self):
         print(
-            f"\tRenaming module {bc.BOLD}{self.app.source.addon}{bc.END} "
-            f"to {bc.BOLD}{self.app.target.addon}{bc.END}..."
+            f"\Move module {bc.BOLD}{self.app.source.addon_path}{bc.END} "
+            f"to {bc.BOLD}{self.app.target.addon_path}{bc.END}..."
         )
-        cmd = (
-            "git filter-branch -f --tree-filter "
-            f"'if [ -d {self.app.source.addon_path} ]; "
-            f"then mv {self.app.source.addon_path} {self.app.target.addon_path}; fi' "
-            "HEAD"
+        path_rename = f"{self.app.source.addon_path}:{self.app.target.addon_path}"
+        # Limit the rewriting of git history on current branch
+        refs = f"{self.app.target.ref}..{self.mig_branch.name}"
+        args = gfr.FilteringOptions.parse_args(
+            [
+                f"--path-rename={path_rename}",
+                "--refs",
+                refs,
+                "--force",
+            ]
         )
-        env = {**os.environ, "FILTER_BRANCH_SQUELCH_WARNING": "1"}
-        subprocess.run(cmd, shell=True, env=env)
-        update_terms_in_directory(
-            self.app.target.addon_path,
-            self.app.source.addon,
-            self.app.target.addon,
-        )
+        filter_ = gfr.RepoFilter(args)
+        filter_.run()
+        if self.app.source.addon != self.app.target.addon:
+            update_terms_in_directory(
+                self.app.target.addon_path,
+                self.app.source.addon,
+                self.app.target.addon,
+            )
         self.app.repo.git.add(self.app.target.addon_path)
-        self.app.repo.git.commit(
-            "-m",
-            f"[MOV] Rename {self.app.source.addon} to {self.app.target.addon}",
-            "--no-verify",
-        )
+        if self.app.repo.is_dirty():
+            self.app.repo.git.commit(
+                "-m",
+                f"[MOV] Move {self.app.source.addon} to {self.app.target.addon}",
+                "--no-verify",
+            )
 
     def _print_tips(self, blacklisted=False, adapted=False):
         mig_tasks_url = MIG_TASKS_URL.format(version=self.app.target_version)
