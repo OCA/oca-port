@@ -281,7 +281,12 @@ class App(Output):
         repo = self.repo
         addons_tree = repo.commit(branch.ref()).tree
         if ref.addons_rootdir and ref.addons_rootdir.name:
-            addons_tree /= str(ref.addons_rootdir)
+            try:
+                addons_tree /= str(ref.addons_rootdir)
+            except KeyError:
+                # Skip if one directory in rootdir doesn't exist
+                # e.g. 'b' missing in rootdir 'a/b'.
+                pass
         branch_addons = [t.path for t in addons_tree.trees]
         if str(ref.addon_path) not in branch_addons:
             if not raise_exc:

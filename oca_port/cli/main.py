@@ -33,9 +33,9 @@ on the relevant upstream organization:
 
     $ oca-port 14.0 16.0 shopfloor --upstream-org camptocamp
 
-To rename a module during its migration (or compare commits of a renamed module):
+To move/rename a module during its migration (or compare commits of a moved/renamed module):
 
-    $ oca-port origin/16.0 origin/18.0 stock_packaging_calculator product_packaging_calculator
+    $ oca-port origin/16.0 origin/18.0 stock_packaging_calculator --move-to product_packaging_calculator
 
 Migration of addon
 ------------------
@@ -68,11 +68,11 @@ from ..utils.misc import bcolors as bc
 @click.argument("target", required=True)
 @click.argument("addon_path", required=True)
 @click.option(
-    "--rename",
+    "--move-to",
     "target_addon_path",
     help=(
         "Expected name/path of the module on 'target'. "
-        "Used to rename a module during a migration."
+        "Used to move or rename a module during a migration."
     ),
 )
 @click.option(
