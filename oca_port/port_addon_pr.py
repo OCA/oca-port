@@ -618,10 +618,21 @@ class BranchesDiff(Output):
         self.from_branch_all_commits, _ = self._get_branch_commits(
             self.app.from_branch.ref(), self.app.source.addons_rootdir
         )
-        self.to_branch_path_commits, _ = self._get_branch_commits(
+        # On target branch, depending how a module has been renamed (e.g. through
+        # a 'git mv' or through a history rewrite with 'git-filter-repo')
+        # both source and target paths should be considered to retrieve commits.
+        to_branch_source_path_commits, _ = self._get_branch_commits(
+            self.app.to_branch.ref(),
+            self.app.source.addons_rootdir,
+            self.app.source.addon_path,
+        )
+        to_branch_target_path_commits, _ = self._get_branch_commits(
             self.app.to_branch.ref(),
             self.app.target.addons_rootdir,
             self.app.target.addon_path,
+        )
+        self.to_branch_path_commits = (
+            to_branch_source_path_commits + to_branch_target_path_commits
         )
         self.to_branch_all_commits, _ = self._get_branch_commits(
             self.app.to_branch.ref(), self.app.target.addons_rootdir
@@ -655,7 +666,12 @@ class BranchesDiff(Output):
         for commit in commits:
             if self.app.cache.is_commit_ported(commit.hexsha):
                 continue
-            com = g.Commit(commit, addons_path=rootdir, cache=self.app.cache)
+            com = g.Commit(
+                commit,
+                addons_path=rootdir,
+                eq_paths={self.app.source.addon: self.app.target.addon},
+                cache=self.app.cache,
+            )
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
@@ -839,6 +855,7 @@ class BranchesDiff(Output):
                     pr_commit = g.Commit(
                         raw_commit,
                         addons_path=self.app.source.addons_rootdir,
+                        eq_paths={self.app.source.addon: self.app.target.addon},
                         cache=self.app.cache,
                     )
                     if self._skip_commit(pr_commit):
