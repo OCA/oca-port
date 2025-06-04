@@ -39,9 +39,13 @@ class Branch:
 class CommitPath(str):
     """Helper class to know if a base path is a directory or a file."""
 
-    def __new__(cls, addons_path, value):
+    def __new__(cls, addons_path, value, convert_paths=None):
+        if not convert_paths:
+            convert_paths = {}
         file_path = pathlib.Path(value).relative_to(addons_path)
         root_node = file_path.parts[0]
+        if convert_paths.get(root_node):
+            root_node = convert_paths[root_node]
         obj = super().__new__(cls, root_node)
         # As soon as `file_path` has a parent, the root node is obviously a folder
         obj.isdir = bool(file_path.parent.name)
@@ -61,8 +65,12 @@ class Commit:
     other_equality_attrs = ("paths",)
     eq_strict = True
 
-    def __init__(self, commit, addons_path=".", cache=None):
-        """Initializes a new Commit instance from a GitPython Commit object."""
+    def __init__(self, commit, addons_path=".", convert_paths=None, cache=None):
+        """Initializes a new Commit instance from a GitPython Commit object.
+
+        `convert_paths` is used to convert old paths to new paths to ease commits
+        comparison afterwards. This is a mapping `{'old_path': 'new_path', ...}`.
+        """
         self.raw_commit = commit
         self.addons_path = addons_path
         self.cache = cache
@@ -78,6 +86,7 @@ class Commit:
         self.parents = [parent.hexsha for parent in commit.parents]
         self._files = set()
         self._paths = set()
+        self.convert_paths = convert_paths or {}
         self.ported_commits = []
 
     @property
@@ -104,7 +113,9 @@ class Commit:
             # Could raise "ValueError: 'f' is not in the subpath of 'addons_path'"
             # in such case we ignore these files, and keep ones in 'addons_path'
             try:
-                commit_path = CommitPath(self.addons_path, f)
+                commit_path = CommitPath(
+                    self.addons_path, f, convert_paths=self.convert_paths
+                )
             except ValueError:
                 continue
             self._paths.add(commit_path)

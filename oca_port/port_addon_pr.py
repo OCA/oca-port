@@ -655,7 +655,12 @@ class BranchesDiff(Output):
         for commit in commits:
             if self.app.cache.is_commit_ported(commit.hexsha):
                 continue
-            com = g.Commit(commit, addons_path=rootdir, cache=self.app.cache)
+            com = g.Commit(
+                commit,
+                addons_path=rootdir,
+                convert_paths={self.app.source.addon: self.app.target.addon},
+                cache=self.app.cache,
+            )
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
@@ -839,6 +844,7 @@ class BranchesDiff(Output):
                     pr_commit = g.Commit(
                         raw_commit,
                         addons_path=self.app.source.addons_rootdir,
+                        convert_paths={self.app.source.addon: self.app.target.addon},
                         cache=self.app.cache,
                     )
                     if self._skip_commit(pr_commit):
