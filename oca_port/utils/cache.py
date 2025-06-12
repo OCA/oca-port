@@ -120,32 +120,32 @@ class UserCache:
     def _get_ported_commits_path(self):
         """Return the file path storing ported commit."""
         file_name = (
-            f"{self.app.addon}_{self.app.from_branch.name}_"
-            f"to_{self.app.to_branch.name}.list"
+            f"{self.app.addon}_{self.app.source.repo}_{self.app.from_branch.name}_"
+            f"to_{self.app.target.repo}_{self.app.to_branch.name}.list"
         )
         return self.dir_path.joinpath(
             self._ported_dirname,
             self.app.upstream_org,
-            self.app.repo_name,
             file_name,
         )
 
     def _get_commits_to_port_path(self):
         """Return the file path storing cached data of commits to port."""
         file_name = (
-            f"{self.app.addon}_{self.app.from_branch.name}_"
-            f"to_{self.app.to_branch.name}.json"
+            f"{self.app.addon}_{self.app.source.repo}_{self.app.from_branch.name}_"
+            f"to_{self.app.target.repo}_{self.app.to_branch.name}.json"
         )
         return self.dir_path.joinpath(
             self._to_port_dirname,
             self.app.upstream_org,
-            self.app.repo_name,
             file_name,
         )
 
     def _get_commits_data_path(self):
         """Return the file path storing commits cached data."""
         file_name = f"{self.app.repo_name}.json"
+        if self.app.source.repo != self.app.target.repo:
+            file_name = f"{self.app.source.repo}_{self.app.target.repo}.json"
         return self.dir_path.joinpath(
             self._commits_data_dirname,
             self.app.upstream_org,
