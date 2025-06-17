@@ -41,15 +41,16 @@ class GitHub:
         gh_commit_pulls = self.request(
             f"repos/{from_org}/{repo_name}/commits/{commit_sha}/pulls"
         )
-        gh_commit_pull = [
-            data
-            for data in gh_commit_pulls
+        for data in gh_commit_pulls:
             if (
                 data["base"]["ref"] == branch
                 and data["base"]["repo"]["full_name"] == f"{from_org}/{repo_name}"
-            )
-        ]
-        return gh_commit_pull and gh_commit_pull[0] or {}
+            ):
+                data2 = self.request(data["commits_url"].replace(GITHUB_API_URL, ""))
+                pr_commits = [d["sha"] for d in data2]
+                if commit_sha in pr_commits:
+                    return data
+        return {}
 
     def search_migration_pr(
         self, from_org: str, repo_name: str, branch: str, addon: str
