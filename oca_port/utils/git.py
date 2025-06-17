@@ -336,7 +336,7 @@ def get_changed_paths(repo, modified=True, staged=True):
 
 def check_path_exists(repo, ref, path, rootdir=None):
     root_tree = repo.commit(ref).tree
-    if rootdir:
+    if rootdir and rootdir != ".":
         root_tree /= str(rootdir)
     paths = [t.path for t in root_tree.trees]
     return path in paths
