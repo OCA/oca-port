@@ -155,19 +155,20 @@ class MigrateAddon(Output):
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
                 self._apply_patches(patches_dir)
-
+            # Run pre-commit
+            updated_files = g.run_pre_commit(self.app.repo)
+            if updated_files:
+                g.commit(
+                    self.app.repo,
+                    msg=f"[IMP] {self.app.addon}: pre-commit auto fixes",
+                    paths=updated_files,
+                )
+            # Adapt code thanks to odoo-module-migrator (if installed)
             try:
                 metadata.metadata("odoo-module-migrator")
                 adapted = self._apply_code_pattern()
             except metadata.PackageNotFoundError:
                 pass
-        if not adapted:
-            updated_files = g.run_pre_commit(self.app.repo)
-            g.commit(
-                self.app.repo,
-                msg=f"[IMP] {self.app.target.addon}: pre-commit auto fixes",
-                paths=updated_files,
-            )
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(self.app, push_branch=False).run()
@@ -300,7 +301,8 @@ class MigrateAddon(Output):
                 self.app.addons_rootdir,
                 self.app.source_version,
                 self.app.target_version,
-                [self.app.addon],
+                module_names=[self.app.addon],
+                pre_commit=False,
             )
             migration.run()
             return True
