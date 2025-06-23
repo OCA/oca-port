@@ -69,7 +69,7 @@ class Commit:
         """Initializes a new Commit instance from a GitPython Commit object.
 
         `eq_paths` is used to declare equivalent paths, to ease commits
-        comparison afterwards. This is a mapping `{'my_module': 'new_module', ...}`.
+        comparison. This is a mapping `{'my_module': 'new_module', ...}`.
         """
         self.raw_commit = commit
         self.addons_path = addons_path
@@ -80,13 +80,18 @@ class Commit:
             tzinfo=None
         ).isoformat()
         self.summary = commit.summary
-        self.message = commit.message
+        self.message = commit.message.strip()
         self.hexsha = commit.hexsha
         self.committed_datetime = commit.committed_datetime.replace(tzinfo=None)
         self.parents = [parent.hexsha for parent in commit.parents]
         self._files = set()
         self._paths = set()
-        self.eq_paths = eq_paths or {}
+        self.eq_paths = {}
+        if eq_paths:
+            # If a == b, then b == a
+            inv_eq_paths = {v: k for k, v in eq_paths.items()}
+            eq_paths.update(inv_eq_paths)
+            self.eq_paths = eq_paths
         self.ported_commits = []
 
     @property
