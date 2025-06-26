@@ -421,6 +421,7 @@ class PortAddonPullRequest(Output):
                 self._print("\t\t\tℹ️  Nothing to port from this commit, skipping")
                 continue
             try:
+                # Generate patches to port from source module
                 patches_dir = tempfile.mkdtemp()
                 self.app.repo.git.format_patch(
                     "--keep-subject",
@@ -435,7 +436,16 @@ class PortAddonPullRequest(Output):
                     os.path.join(patches_dir, f)
                     for f in sorted(os.listdir(patches_dir))
                 ]
-                self.app.repo.git.am("-3", "--keep", *patches)
+                # Apply patches on target module (could be the same than source one
+                # or a new one if it has been renamed).
+                self.app.repo.git.am(
+                    "-3",
+                    "--keep",
+                    *patches,
+                    "-p2",  # Remove 'a/my_module' from patch
+                    "--directory",
+                    self.app.target.addon,  # Prepend 'my_module[_renamed]' to patch
+                )
                 shutil.rmtree(patches_dir)
             except git.exc.GitCommandError as exc:
                 self._print(f"{bc.FAIL}ERROR:{bc.ENDC}\n{exc}\n")
