@@ -6,6 +6,7 @@ import re
 import os
 import subprocess
 import requests
+from urllib.parse import urljoin
 
 from .git import PullRequest
 
@@ -23,7 +24,10 @@ class GitHub:
         headers = {"Accept": "application/vnd.github.groot-preview+json"}
         if self.token:
             headers.update({"Authorization": f"token {self.token}"})
-        full_url = "/".join([GITHUB_API_URL, url])
+        if url.startswith(GITHUB_API_URL):
+            full_url = url
+        else:
+            full_url = urljoin(GITHUB_API_URL, url)
         kwargs = {"headers": headers}
         if json:
             kwargs.update(json=json)
@@ -46,7 +50,7 @@ class GitHub:
                 data["base"]["ref"] == branch
                 and data["base"]["repo"]["full_name"] == f"{from_org}/{repo_name}"
             ):
-                data2 = self.request(data["commits_url"].replace(GITHUB_API_URL, ""))
+                data2 = self.request(data["commits_url"])
                 pr_commits = [d["sha"] for d in data2]
                 if commit_sha in pr_commits:
                     return data
