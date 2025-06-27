@@ -39,9 +39,13 @@ class Branch:
 class CommitPath(str):
     """Helper class to know if a base path is a directory or a file."""
 
-    def __new__(cls, addons_path, value):
+    def __new__(cls, addons_path, value, eq_paths=None):
+        if not eq_paths:
+            eq_paths = {}
         file_path = pathlib.Path(value).relative_to(addons_path)
         root_node = file_path.parts[0]
+        if eq_paths.get(root_node):
+            root_node = eq_paths[root_node]
         obj = super().__new__(cls, root_node)
         # As soon as `file_path` has a parent, the root node is obviously a folder
         obj.isdir = bool(file_path.parent.name)
@@ -61,8 +65,12 @@ class Commit:
     other_equality_attrs = ("paths",)
     eq_strict = True
 
-    def __init__(self, commit, addons_path=".", cache=None):
-        """Initializes a new Commit instance from a GitPython Commit object."""
+    def __init__(self, commit, addons_path=".", eq_paths=None, cache=None):
+        """Initializes a new Commit instance from a GitPython Commit object.
+
+        `eq_paths` is used to declare equivalent paths, to ease commits
+        comparison. This is a mapping `{'my_module': 'new_module', ...}`.
+        """
         self.raw_commit = commit
         self.addons_path = addons_path
         self.cache = cache
@@ -72,12 +80,18 @@ class Commit:
             tzinfo=None
         ).isoformat()
         self.summary = commit.summary
-        self.message = commit.message
+        self.message = commit.message.strip()
         self.hexsha = commit.hexsha
         self.committed_datetime = commit.committed_datetime.replace(tzinfo=None)
         self.parents = [parent.hexsha for parent in commit.parents]
         self._files = set()
         self._paths = set()
+        self.eq_paths = {}
+        if eq_paths:
+            # If a == b, then b == a
+            inv_eq_paths = {v: k for k, v in eq_paths.items()}
+            eq_paths.update(inv_eq_paths)
+            self.eq_paths = eq_paths
         self.ported_commits = []
 
     @property
@@ -105,9 +119,11 @@ class Commit:
             # in such case we ignore these files, and keep ones in 'addons_path'
             try:
                 commit_path = CommitPath(self.addons_path, f)
+                eq_commit_path = CommitPath(self.addons_path, f, eq_paths=self.eq_paths)
             except ValueError:
                 continue
             self._paths.add(commit_path)
+            self._paths.add(eq_commit_path)
         return self._paths
 
     def _get_files(self):
