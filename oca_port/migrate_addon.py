@@ -96,7 +96,7 @@ class MigrateAddon(Output):
             return False, None
         # At this stage, the addon could be migrated
         self._detect_existing_pr()
-        if self.app.non_interactive or self.app.dry_run:
+        if (self.app.non_interactive and not self.app.assume_yes) or self.app.dry_run:
             msg = (
                 f"ℹ️  {bc.BOLD}{self.app.source.addon}{bc.END} can be migrated "
                 f"from {bc.BOLD}{self.app.source_version}{bc.END} "
@@ -137,7 +137,7 @@ class MigrateAddon(Output):
             confirm += f" and move it to {bc.BOLD}{self.app.target.addon_path}{bc.END}?"
         else:
             confirm += "?"
-        if not click.confirm(confirm):
+        if not (self.app.assume_yes or click.confirm(confirm)):
             self.app.storage.blacklist_addon(confirm=True)
             if not self.app.storage.dirty:
                 return False, None
@@ -262,7 +262,7 @@ class MigrateAddon(Output):
                 f"Branch {bc.BOLD}{self.mig_branch.name}{bc.END} already exists, "
                 "recreate it?\n(⚠️  you will lose the existing branch)"
             )
-            if click.confirm(confirm):
+            if self.app.assume_yes or click.confirm(confirm):
                 self.app.repo.delete_head(self.mig_branch.name, "-f")
             else:
                 create_branch = False
