@@ -178,10 +178,13 @@ class MigrateAddon(Output):
     def _checkout_base_branch(self):
         # Ensure to not start to work from a working branch
         if self.app.to_branch.name in self.app.repo.heads:
-            self.app.repo.heads[self.app.to_branch.name].checkout()
+            self.app.repo.heads[self.app.to_branch.name].checkout(
+                "--recurse-submodules",
+            )
         else:
             self.app.repo.git.checkout(
                 "--no-track",
+                "--recurse-submodules",
                 "-b",
                 self.app.to_branch.name,
                 self.app.to_branch.ref(),
@@ -205,7 +208,11 @@ class MigrateAddon(Output):
                 f"from {self.app.to_branch.ref()}..."
             )
             self.app.repo.git.checkout(
-                "--no-track", "-b", self.mig_branch.name, self.app.to_branch.ref()
+                "--no-track",
+                "--recurse-submodules",
+                "-b",
+                self.mig_branch.name,
+                self.app.to_branch.ref(),
             )
         return create_branch
 
