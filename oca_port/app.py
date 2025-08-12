@@ -76,6 +76,8 @@ class App(Output):
     dry_run: bool = False
     output: str = None
     fetch: bool = False
+    pre_commit: bool = True
+    module_migration: bool = True
     no_cache: bool = False
     clear_cache: bool = False
     github_token: str = None

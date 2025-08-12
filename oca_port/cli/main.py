@@ -108,6 +108,16 @@ from ..utils.misc import bcolors as bc
     ),
 )
 @click.option("--fetch", is_flag=True, help="Fetch remote branches from upstream.")
+@click.option(
+    "--pre-commit/--no-pre-commit",
+    default=True,
+    help="Run pre-commit hooks after porting.",
+)
+@click.option(
+    "--module-migration/--no-module-migration",
+    default=True,
+    help="Run odoo-module-migrator after porting.",
+)
 @click.option("--no-cache", is_flag=True, help="Disable user's cache.")
 @click.option("--clear-cache", is_flag=True, help="Clear the user's cache.")
 @click.option(
@@ -130,6 +140,8 @@ def main(
     non_interactive: bool,
     output: str,
     fetch: bool,
+    pre_commit: bool,
+    module_migration: bool,
     no_cache: bool,
     clear_cache: bool,
     dry_run: bool,
@@ -165,6 +177,8 @@ def main(
             non_interactive=non_interactive,
             output=output,
             fetch=fetch,
+            pre_commit=pre_commit,
+            module_migration=module_migration,
             no_cache=no_cache,
             clear_cache=clear_cache,
             dry_run=dry_run,
