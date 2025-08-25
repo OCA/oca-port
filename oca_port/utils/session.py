@@ -27,7 +27,7 @@ class Session:
         self._sessions_dir_path = self._get_sessions_dir_path()
         self._key = hashlib.shake_256(name.encode()).hexdigest(3)
         session_file = (
-            f"{self.app.addon}"
+            f"{self.app.source.addon}"
             f"-{self.app.source_version}-{self.app.target_version}"
             f"-{self._key}.json"
         )

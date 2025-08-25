@@ -3,9 +3,13 @@
 
 import giturlparse
 import json
+import logging
 import os
 import re
+import subprocess
 from collections import defaultdict
+
+_logger = logging.getLogger(__name__)
 
 MANIFEST_NAMES = ("__manifest__.py", "__openerp__.py")
 
@@ -125,3 +129,22 @@ def pr_ref_from_url(url):
     # url like 'https://github.com/OCA/edi/pull/371'
     org, repo, __, nr = url.split("/")[3:]
     return f"{org}/{repo}#{nr}"
+
+
+def update_terms_in_directory(dir_path, old_term, new_term):
+    """Update all `old_term` terms to `new_term` in `dir_path` directory."""
+    # NOTE: requires 'find' and 'sed' tools available
+    cmd = [
+        "find",
+        str(dir_path),
+        "-type f",
+        "! -name __init__.py",
+        "-exec",
+        f"sed -i 's/{old_term}/{new_term}/g'" + " {} \;",
+    ]
+    try:
+        subprocess.check_call(" ".join(cmd), shell=True)
+    except subprocess.CalledProcessError:
+        _logger.warning(
+            f"⚠️  Unable to rename '{old_term}' terms to '{new_term}' in {dir_path} directory"
+        )

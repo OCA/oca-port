@@ -72,6 +72,19 @@ class TestApp(common.CommonCase):
             # exit code 0 means nothing needs to be migrated/ported
             self.assertEqual(exc.args[0], 0)
 
+    def test_app_rename_nothing_to_port(self):
+        app = self._create_app(
+            self.source1,
+            self.target3,
+            addon_path=self.addon,
+            target_addon_path=self.target_addon,
+        )
+        try:
+            app.run()
+        except SystemExit as exc:
+            # exit code 0 means nothing needs to be migrated/ported
+            self.assertEqual(exc.args[0], 0)
+
     def test_app_commit_to_port(self):
         repo = self._git_repo(self.repo_path)
         source1 = extract_ref_info(repo, "source", self.source1)
@@ -88,8 +101,35 @@ class TestApp(common.CommonCase):
         res = app.run()
         self.assertFalse(res)
 
+    def test_app_rename_commit_to_port(self):
+        repo = self._git_repo(self.repo_path)
+        source1 = extract_ref_info(repo, "source", self.source1)
+        self._commit_change_on_branch(self.repo_upstream_path, source1.branch)
+        app = self._create_app(
+            self.source1,
+            self.target3,
+            addon_path=self.addon,
+            target_addon_path=self.target_addon,
+            fetch=True,
+        )
+        try:
+            app.run()
+        except SystemExit as exc:
+            # exit code 110 means pull requests or commits could be ported
+            self.assertEqual(exc.args[0], 110)
+
     def test_app_module_to_migrate(self):
         app = self._create_app(self.source2, self.target2)
+        try:
+            app.run()
+        except SystemExit as exc:
+            # exit code 100 means the module could be migrated
+            self.assertEqual(exc.args[0], 100)
+
+    def test_app_rename_module_to_migrate(self):
+        app = self._create_app(
+            self.source2, self.target2, target_addon_path=self.target_addon
+        )
         try:
             app.run()
         except SystemExit as exc:
@@ -100,7 +140,7 @@ class TestApp(common.CommonCase):
         # The other way around, nothing to migrate as the module doesn't exist
         # (with CLI, the returned exit code is then 1)
         app = self._create_app(self.target2, self.source2)
-        error_msg = "my_module does not exist on origin/17.0"
+        error_msg = f"{self.addon} does not exist on {self.target2}"
         with self.assertRaisesRegex(ValueError, error_msg):
             app.run()
 
@@ -111,6 +151,18 @@ class TestApp(common.CommonCase):
         self.assertIsInstance(result, bool)
         # The other way around, no commit to backport
         app = self._create_app(self.target1, self.source1, non_interactive=True)
+        result = app.run()
+        self.assertFalse(result)
+        self.assertIsInstance(result, bool)
+
+    def test_app_rename_nothing_to_port_non_interactive(self):
+        app = self._create_app(
+            self.source1,
+            self.target3,
+            addon_path=self.addon,
+            target_addon_path=self.target_addon,
+            non_interactive=True,
+        )
         result = app.run()
         self.assertFalse(result)
         self.assertIsInstance(result, bool)
@@ -134,6 +186,22 @@ class TestApp(common.CommonCase):
         self.assertFalse(result)
         self.assertIsInstance(result, bool)
 
+    def test_app_rename_commit_to_port_non_interactive(self):
+        repo = self._git_repo(self.repo_path)
+        source1 = extract_ref_info(repo, "source", self.source1)
+        self._commit_change_on_branch(self.repo_upstream_path, source1.branch)
+        app = self._create_app(
+            self.source1,
+            self.target3,
+            addon_path=self.addon,
+            target_addon_path=self.target_addon,
+            non_interactive=True,
+            fetch=True,
+        )
+        result = app.run()
+        self.assertTrue(result)
+        self.assertIsInstance(result, bool)
+
     def test_app_module_to_migrate_non_interactive(self):
         app = self._create_app(
             self.source2,
@@ -145,7 +213,29 @@ class TestApp(common.CommonCase):
         self.assertIsInstance(result, bool)
         # The other way around, nothing to migrate as the module doesn't exist
         app = self._create_app(self.target2, self.source2, non_interactive=True)
-        error_msg = "my_module does not exist on origin/17.0"
+        error_msg = f"{self.addon} does not exist on {self.target2}"
+        with self.assertRaisesRegex(ValueError, error_msg):
+            app.run()
+
+    def test_app_rename_module_to_migrate_non_interactive(self):
+        app = self._create_app(
+            self.source2,
+            self.target2,
+            target_addon_path=self.target_addon,
+            non_interactive=True,
+        )
+        result = app.run()
+        self.assertTrue(result)
+        self.assertIsInstance(result, bool)
+        # The other way around, nothing to migrate as the module doesn't exist
+        app = self._create_app(
+            self.target2,
+            self.source2,
+            addon_path=self.target_addon,
+            target_addon_path=self.addon,
+            non_interactive=True,
+        )
+        error_msg = f"{self.target_addon} does not exist on {self.target2}"
         with self.assertRaisesRegex(ValueError, error_msg):
             app.run()
 
@@ -195,6 +285,39 @@ class TestApp(common.CommonCase):
         output = json.loads(output)
         self.assertEqual(output, {})
 
+    def test_app_rename_commit_to_port_output_json(self):
+        repo = self._git_repo(self.repo_path)
+        source1 = extract_ref_info(repo, "source", self.source1)
+        commit_sha = self._commit_change_on_branch(
+            self.repo_upstream_path, source1.branch
+        )
+        app = self._create_app(
+            self.source1,
+            self.target3,
+            addon_path=self.addon,
+            target_addon_path=self.target_addon,
+            output="json",
+            fetch=True,
+        )
+        output = app.run()
+        self.assertTrue(output)
+        self.assertIsInstance(output, str)
+        output = json.loads(output)
+        self.assertEqual(output["process"], "port_commits")
+        # A commit could be ported and is put in a "fake PR" without number
+        self.assertEqual(len(output["results"]), 1)
+        self.assertDictEqual(
+            output["results"][""],
+            {
+                "url": "",
+                "ref": "",
+                "author": "",
+                "title": "",
+                "merged_at": "",
+                "missing_commits": [commit_sha],
+            },
+        )
+
     def test_app_module_to_migrate_output_json(self):
         app = self._create_app(
             self.source2,
@@ -209,6 +332,31 @@ class TestApp(common.CommonCase):
         self.assertEqual(output["results"], {})
         # The other way around, nothing to migrate as the module doesn't exist
         app = self._create_app(self.target2, self.source2, output="json")
-        error_msg = "my_module does not exist on origin/17.0"
+        error_msg = f"{self.addon} does not exist on {self.target2}"
+        with self.assertRaisesRegex(ValueError, error_msg):
+            app.run()
+
+    def test_app_rename_module_to_migrate_output_json(self):
+        app = self._create_app(
+            self.source2,
+            self.target2,
+            target_addon_path=self.target_addon,
+            output="json",
+        )
+        output = app.run()
+        self.assertTrue(output)
+        self.assertIsInstance(output, str)
+        output = json.loads(output)
+        self.assertEqual(output["process"], "migrate")
+        self.assertEqual(output["results"], {})
+        # The other way around, nothing to migrate as the module doesn't exist
+        app = self._create_app(
+            self.target2,
+            self.source2,
+            addon_path=self.target_addon,
+            target_addon_path=self.addon,
+            output="json",
+        )
+        error_msg = f"{self.target_addon} does not exist on {self.target2}"
         with self.assertRaisesRegex(ValueError, error_msg):
             app.run()

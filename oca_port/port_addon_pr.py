@@ -81,7 +81,7 @@ class PortAddonPullRequest(Output):
                     return False, self._render_output(self.app.output, {})
             return False, None
         self._print(
-            f"{bc.BOLD}{self.app.addon}{bc.END} already exists "
+            f"{bc.BOLD}{self.app.target.addon}{bc.END} already exists "
             f"on {bc.BOLD}{self.app.to_branch.ref()}{bc.END}, "
             "checking PRs to port..."
         )
@@ -130,7 +130,7 @@ class PortAddonPullRequest(Output):
             h = hashlib.shake_256("-".join(commits_to_port).encode())
             key = h.hexdigest(3)
             dest_branch_name = PR_BRANCH_NAME.format(
-                addon=self.app.addon,
+                addon=self.app.target.addon,
                 source_version=self.app.source_version,
                 target_version=self.app.target_version,
                 key=key,
@@ -163,9 +163,12 @@ class PortAddonPullRequest(Output):
                 )
                 if not click.confirm(confirm):
                     msg = "ℹ️  To resume the work from this branch, relaunch with:\n\n"
+                    source_and_target = f"{self.app.source.addon_path}"
+                    if self.app.source.addon_path != self.app.target.addon_path:
+                        source_and_target += f" {self.app.target.addon_path}"
                     cmd = (
                         f"\t{bc.DIM}oca-port {self.app.source.ref} "
-                        f"{dest_branch_name} {self.app.addon_path} %s{bc.END}"
+                        f"{dest_branch_name} {source_and_target} %s{bc.END}"
                     )
                     opts = []
                     if self.app.source.branch != self.app.source_version:
@@ -233,12 +236,12 @@ class PortAddonPullRequest(Output):
         return True
 
     def _get_session_name(self):
-        return f"{self.app.addon}-{self.app.destination.branch}"
+        return f"{self.app.source.addon}-{self.app.destination.branch}"
 
     def _init_session(self):
         session = Session(self.app, self._get_session_name())
         data = session.get_data()
-        data.setdefault("addon", self.app.addon)
+        data.setdefault("addon", self.app.source.addon)
         data.setdefault("repo_name", self.app.repo_name)
         data.setdefault("pull_requests", {})
         session.set_data(data)
@@ -310,7 +313,7 @@ class PortAddonPullRequest(Output):
         if self.app.storage.dirty:
             pr_refs = ", ".join([str(pr["number"]) for pr in blacklisted.values()])
             self.app.storage.commit(
-                msg=f"oca-port: blacklist PR(s) {pr_refs} for {self.app.addon}"
+                msg=f"oca-port: blacklist PR(s) {pr_refs} for {self.app.target.addon}"
             )
 
     def _print_wip_session(self):
@@ -418,6 +421,7 @@ class PortAddonPullRequest(Output):
                 self._print("\t\t\tℹ️  Nothing to port from this commit, skipping")
                 continue
             try:
+                # Generate patches to port from source module
                 patches_dir = tempfile.mkdtemp()
                 self.app.repo.git.format_patch(
                     "--keep-subject",
@@ -432,7 +436,17 @@ class PortAddonPullRequest(Output):
                     os.path.join(patches_dir, f)
                     for f in sorted(os.listdir(patches_dir))
                 ]
-                self.app.repo.git.am("-3", "--keep", *patches)
+                # Apply patches on target module (could be the same than source one
+                # or a new one if it has been renamed).
+                n_leading_paths = len(self.app.source.addon_path.parts) + 1
+                self.app.repo.git.am(
+                    "-3",
+                    "--keep",
+                    *patches,
+                    f"-p{n_leading_paths}",  # Remove 'a/my_module' from patch
+                    "--directory",
+                    self.app.target.addon_path,  # Prepend 'my_module[_renamed]' to patch
+                )
                 shutil.rmtree(patches_dir)
             except git.exc.GitCommandError as exc:
                 self._print(f"{bc.FAIL}ERROR:{bc.ENDC}\n{exc}\n")
@@ -445,8 +459,7 @@ class PortAddonPullRequest(Output):
                     continue
         return True
 
-    @staticmethod
-    def _skip_diff(commit, diff):
+    def _skip_diff(self, commit, diff):
         """Check if a commit diff should be skipped or not.
 
         A skipped diff won't have its file path ported through 'git format-path'.
@@ -460,9 +473,12 @@ class PortAddonPullRequest(Output):
             return True, ""
         if diff.renamed:
             return False, ""
-        diff_path = diff.b_path.split("/", maxsplit=1)[0]
+        diff_full_path = pathlib.Path(diff.b_path)
+        diff_path = diff_full_path.relative_to(self.app.target.addons_rootdir)
+        addon_name = diff_path.parts[0]
+        addon_path = self.app.target.addons_rootdir.joinpath(addon_name)
         # Skip diff updating auto-generated files (pre-commit, bot...)
-        if any(file_path in diff_path for file_path in BOT_FILES_TO_SKIP):
+        if any(file_path in diff.b_path for file_path in BOT_FILES_TO_SKIP):
             return (
                 True,
                 f"SKIP: '{diff.change_type} {diff.b_path}' diff relates "
@@ -470,8 +486,8 @@ class PortAddonPullRequest(Output):
             )
         # Do not accept diff on unported addons
         if (
-            not misc.get_manifest_path(diff_path)
-            and diff_path not in commit.addons_created
+            not misc.get_manifest_path(addon_path)
+            and addon_name not in commit.addons_created
         ):
             return (
                 True,
@@ -515,7 +531,7 @@ class PortAddonPullRequest(Output):
         title = body = ""
         if len(processed_prs) > 1:
             title = (
-                f"[{self.app.target_version}][FW] {self.app.addon}: multiple ports "
+                f"[{self.app.target_version}][FW] {self.app.target.addon}: multiple ports "
                 f"from {self.app.source_version}"
             )
         if len(processed_prs) == 1:
@@ -607,18 +623,32 @@ class BranchesDiff(Output):
 
     def __init__(self, app):
         self.app = app
-        self.path = self.app.addon_path
         self.from_branch_path_commits, _ = self._get_branch_commits(
-            self.app.from_branch.ref(), self.path
+            self.app.from_branch.ref(),
+            self.app.source.addons_rootdir,
+            self.app.source.addon_path,
         )
         self.from_branch_all_commits, _ = self._get_branch_commits(
-            self.app.from_branch.ref()
+            self.app.from_branch.ref(), self.app.source.addons_rootdir
         )
-        self.to_branch_path_commits, _ = self._get_branch_commits(
-            self.app.to_branch.ref(), self.path
+        # On target branch, depending how a module has been renamed (e.g. through
+        # a 'git mv' or through a history rewrite with 'git-filter-repo')
+        # both source and target paths should be considered to retrieve commits.
+        to_branch_source_path_commits, _ = self._get_branch_commits(
+            self.app.to_branch.ref(),
+            self.app.source.addons_rootdir,
+            self.app.source.addon_path,
+        )
+        to_branch_target_path_commits, _ = self._get_branch_commits(
+            self.app.to_branch.ref(),
+            self.app.target.addons_rootdir,
+            self.app.target.addon_path,
+        )
+        self.to_branch_path_commits = (
+            to_branch_source_path_commits + to_branch_target_path_commits
         )
         self.to_branch_all_commits, _ = self._get_branch_commits(
-            self.app.to_branch.ref()
+            self.app.to_branch.ref(), self.app.target.addons_rootdir
         )
         self.commits_diff = self.get_commits_diff()
         self.serialized_diff = self._serialize_diff(self.commits_diff)
@@ -632,7 +662,7 @@ class BranchesDiff(Output):
             data[pr.number]["missing_commits"] = [commit.hexsha for commit in commits]
         return data
 
-    def _get_branch_commits(self, branch, path="."):
+    def _get_branch_commits(self, branch, rootdir, path="."):
         """Get commits from the local repository for the given `branch`.
 
         An optional `path` parameter can be set to limit commits to a given folder.
@@ -650,7 +680,10 @@ class BranchesDiff(Output):
             if self.app.cache.is_commit_ported(commit.hexsha):
                 continue
             com = g.Commit(
-                commit, addons_path=self.app.addons_rootdir, cache=self.app.cache
+                commit,
+                addons_path=rootdir,
+                eq_paths={self.app.source.addon: self.app.target.addon},
+                cache=self.app.cache,
             )
             if self._skip_commit(com):
                 continue
@@ -718,14 +751,14 @@ class BranchesDiff(Output):
             message = (
                 f"{bc.BOLD}{bc.OKBLUE}{i} pull request(s){bc.END} "
                 f"and {bc.BOLD}{bc.OKBLUE}{nb_commits} commit(s) w/o "
-                f"PR{bc.END} related to '{bc.OKBLUE}{self.path}"
+                f"PR{bc.END} related to '{bc.OKBLUE}{self.app.source.addon_path}"
                 f"{bc.ENDC}' to port from {self.app.from_branch.ref()} "
                 f"to {self.app.to_branch.ref()}"
             )
         else:
             message = (
                 f"{bc.BOLD}{bc.OKBLUE}{i} pull request(s){bc.END} "
-                f"related to '{bc.OKBLUE}{self.path}{bc.ENDC}' to port from "
+                f"related to '{bc.OKBLUE}{self.app.source.addon_path}{bc.ENDC}' to port from "
                 f"{self.app.from_branch.ref()} to {self.app.to_branch.ref()}"
             )
         lines_to_print.insert(0, message)
@@ -740,7 +773,7 @@ class BranchesDiff(Output):
         self._print()
         lines_to_print = []
         msg = (
-            f"ℹ️  {nb_prs} other PRs related to {bc.OKBLUE}{self.app.addon}{bc.ENDC} "
+            f"ℹ️  {nb_prs} other PRs related to {bc.OKBLUE}{self.app.source.addon}{bc.ENDC} "
             "are also updating satellite modules/root files"
         )
         if verbose:
@@ -760,7 +793,8 @@ class BranchesDiff(Output):
                 self.app.repo,
                 self.app.to_branch.ref(),
                 path,
-                rootdir=self.app.addons_rootdir and str(self.app.addons_rootdir),
+                rootdir=self.app.source.addons_rootdir
+                and str(self.app.source.addons_rootdir),
             )
             if path_exists:
                 if verbose:
@@ -833,7 +867,8 @@ class BranchesDiff(Output):
                         continue
                     pr_commit = g.Commit(
                         raw_commit,
-                        addons_path=self.app.addons_rootdir,
+                        addons_path=self.app.source.addons_rootdir,
+                        eq_paths={self.app.source.addon: self.app.target.addon},
                         cache=self.app.cache,
                     )
                     if self._skip_commit(pr_commit):
@@ -922,7 +957,7 @@ class BranchesDiff(Output):
         """Check if a PR still needs to update the analyzed addon."""
         for path in pr.paths_not_ported:
             path_ = pathlib.Path(path)
-            if path_.name == self.app.addon:
+            if path_.name == self.app.source.addon:
                 return True
         return False
 
