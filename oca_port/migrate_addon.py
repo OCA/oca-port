@@ -156,19 +156,21 @@ class MigrateAddon(Output):
             if self.app.source.addon_path != self.app.target.addon_path:
                 self._move_addon()
             # Run pre-commit
-            updated_files = g.run_pre_commit(self.app.repo)
-            if updated_files:
-                g.commit(
-                    self.app.repo,
-                    msg=f"[IMP] {self.app.target.addon}: pre-commit auto fixes",
-                    paths=updated_files,
-                )
+            if self.app.pre_commit:
+                updated_files = g.run_pre_commit(self.app.repo)
+                if updated_files:
+                    g.commit(
+                        self.app.repo,
+                        msg=f"[IMP] {self.app.target.addon}: pre-commit auto fixes",
+                        paths=updated_files,
+                    )
             # Adapt code thanks to odoo-module-migrator (if installed)
-            try:
-                metadata.metadata("odoo-module-migrator")
-                adapted = self._apply_code_pattern()
-            except metadata.PackageNotFoundError:
-                pass
+            if self.app.module_migration:
+                try:
+                    metadata.metadata("odoo-module-migrator")
+                    adapted = self._apply_code_pattern()
+                except metadata.PackageNotFoundError:
+                    pass
         # Check if the addon has commits that update neighboring addons to
         # make it work properly
         PortAddonPullRequest(self.app, push_branch=False).run()
