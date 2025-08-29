@@ -184,7 +184,10 @@ class PortAddonPullRequest(Output):
                 if self.app.repo.active_branch.name == dest_branch_name:
                     # We cannot delete an active branch, checkout the underlying
                     # commit instead
-                    self.app.repo.git.checkout(dest_commit)
+                    self.app.repo.git.checkout(
+                        "--recurse-submodules",
+                        dest_commit,
+                    )
                 self.app.repo.delete_head(dest_branch_name, "-f")
                 dest_branch_exists = False
                 # Clear any ongoing work from the session
@@ -192,11 +195,17 @@ class PortAddonPullRequest(Output):
                 session.clear()
         if not dest_branch_exists:
             self.app.repo.git.checkout(
-                "--no-track", "-b", dest_branch_name, base_ref.ref()
+                "--no-track",
+                "--recurse-submodules",
+                "-b",
+                dest_branch_name,
+                base_ref.ref(),
             )
         # Checkout the destination branch before porting PRs
         dest_branch = g.Branch(self.app.repo, dest_branch_name)
-        self.app.repo.heads[dest_branch.name].checkout()
+        self.app.repo.heads[dest_branch.name].checkout(
+            "--recurse-submodules",
+        )
         last_pr = (
             list(branches_diff.commits_diff["addon"].keys())[-1]
             if branches_diff.commits_diff["addon"]
