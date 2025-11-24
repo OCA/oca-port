@@ -584,7 +584,10 @@ class PortAddonPullRequest(Output):
             self._print(
                 "PR(s) ported locally:",
                 ", ".join(
-                    [f"{bc.OKCYAN}#{pr.number}{bc.ENDC}" for pr in processed_prs]
+                    [
+                        f"{bc.OKCYAN}#{pr['number']}{bc.ENDC}"
+                        for pr in processed_prs.values()
+                    ]
                 ),
             )
         if click.confirm(
