@@ -42,7 +42,9 @@ class TestBranchesDiff(common.CommonCase):
         ]
         upstream_repo.git.am("-3", "--keep", *patches)
         # Check if unported change is detected as satellite
-        app = self._create_app(self.source1, self.target1, fetch=True)
+        app = self._create_app(
+            self.source1, self.target1, fetch=True, skip_similar_commits=False
+        )
         diff = BranchesDiff(app)
         self.assertFalse(diff.commits_diff["addon"])
         self.assertTrue(diff.commits_diff["satellite"])
