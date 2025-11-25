@@ -228,6 +228,11 @@ class MigrateAddon(Output):
     def _detect_existing_pr(self):
         """Looking for an existing PR to review."""
         existing_pr = None
+        platform = self.app.target.platform
+
+        if platform not in ("github",):
+            return existing_pr
+
         if self.app.upstream_org and self.app.repo_name:
             existing_pr = self.app.github.search_migration_pr(
                 from_org=self.app.upstream_org,
