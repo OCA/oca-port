@@ -4,6 +4,7 @@
 import contextlib
 import pathlib
 import re
+import os
 import subprocess
 from collections import abc
 
@@ -13,6 +14,11 @@ from . import misc
 from .misc import bcolors as bc, pr_ref_from_url
 
 PO_FILE_REGEX = re.compile(r".*i18n/.+\.pot?$")
+
+
+env = os.environ.copy()
+extra_path = os.path.expanduser("~/.local/bin")
+env["PATH"] = extra_path + os.pathsep + env.get("PATH", "")
 
 
 class Branch:
@@ -317,11 +323,11 @@ def run_pre_commit(repo, hook=None):
     untracked_files = set(repo.untracked_files)
     # First ensure that 'pre-commit' is initialized for the repository,
     # then run it (without checking the return code on purpose)
-    subprocess.check_call("pre-commit install", shell=True)
+    subprocess.run("pre-commit install", env=env, shell=True, check=True)
     if hook:
-        subprocess.run(f"pre-commit run {hook}", shell=True)
+        subprocess.run(f"pre-commit run {hook}", env=env, shell=True)
     else:
-        subprocess.run("pre-commit run -a", shell=True)
+        subprocess.run("pre-commit run -a", env=env, shell=True)
     new_untracked_files = set(repo.untracked_files)
     changed_files = {diff.a_path for diff in repo.index.diff(None)}
     updated_files = (new_untracked_files | changed_files) - untracked_files
