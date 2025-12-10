@@ -13,6 +13,21 @@ from . import misc
 from .misc import bcolors as bc, pr_ref_from_url
 
 PO_FILE_REGEX = re.compile(r".*i18n/.+\.pot?$")
+TRANSLATION_SUMMARY = [
+    "Added translation using Weblate",
+    "Translated using Weblate",
+]
+SQUASHABLE_SUMMARY = [
+    "Update translation files",
+]
+SQUASHABLE_AUTHOR_EMAIL = [
+    "transbot@odoo-community.org",
+    "noreply@weblate.org",
+    "oca-git-bot@odoo-community.org",
+    "oca+oca-travis@odoo-community.org",
+    "oca-ci@odoo-community.org",
+    "shopinvader-git-bot@shopinvader.com",
+]
 
 
 class Branch:
@@ -236,6 +251,34 @@ class Commit:
         if self.raw_commit.parents:
             return self.raw_commit.diff(self.raw_commit.parents[0], R=True)
         return self.raw_commit.diff(g.NULL_TREE)
+
+    def _is_bot_commit(self):
+        if (
+            any([msg in self.summary for msg in SQUASHABLE_SUMMARY])
+            or self.author_email in SQUASHABLE_AUTHOR_EMAIL
+        ):
+            return True
+        return False
+
+    def _is_translation_commit(self):
+        return any([msg in self.summary for msg in TRANSLATION_SUMMARY])
+
+    def _is_same_language(self, other):
+        """
+        Used for translation commit
+        Compare 2 commits whether they translate the same language and come from same author
+        """
+        if not isinstance(other, Commit):
+            return False
+        lang = re.search(r"\(([^)]+)\)", self.summary)
+        lang_other = re.search(r"\(([^)]+)\)", other.summary)
+        if lang and lang_other:
+            lang = lang.group(1).strip()
+            lang_other = lang_other.group(1).strip()
+
+            if lang == lang_other and self.author_email == other.author_email:
+                return True
+        return False
 
 
 @contextlib.contextmanager
