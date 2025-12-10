@@ -26,7 +26,7 @@ to another.
 
 To automatically apply code patterns with [odoo-module-migrator](https://github.com/OCA/odoo-module-migrator), install library with below syntax:
 
-    $ pipx inject --include-deps  oca-port git+https://github.com/OCA/odoo-module-migrator.git@master
+    $ pipx inject --include-apps --include-deps  oca-port git+https://github.com/OCA/odoo-module-migrator.git@master
 
 ## <a name="use"/>Using
 
