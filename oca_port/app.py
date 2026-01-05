@@ -46,6 +46,8 @@ class App(Output):
             flag to not wait for user input and to return a error code to the shell.
             Returns 100 if an addon could be migrated, 110 if pull requests/commits
             could be ported, 0 if the history of the addon is the same on both branches.
+        assume_yes:
+            Assume yes to prompts
         output:
             returns a parsable output. This implies the 'non-interactive' mode
             defined above but without returning any special exit code.
@@ -73,6 +75,7 @@ class App(Output):
     upstream_org: str = "OCA"
     verbose: bool = False
     non_interactive: bool = False
+    assume_yes: bool = False
     dry_run: bool = False
     output: str = None
     fetch: bool = False

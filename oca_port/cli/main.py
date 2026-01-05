@@ -98,6 +98,7 @@ from ..utils.misc import bcolors as bc
 @click.option(
     "--non-interactive", is_flag=True, help="Disable all interactive prompts."
 )
+@click.option("-y", "--yes", "assume_yes", is_flag=True, help="Assume yes to prompts.")
 @click.option("--dry-run", is_flag=True, help="Print results, no nothing.")
 @click.option(
     "--output",
@@ -138,6 +139,7 @@ def main(
     upstream_org: str,
     verbose: bool,
     non_interactive: bool,
+    assume_yes: bool,
     output: str,
     fetch: bool,
     pre_commit: bool,
@@ -175,6 +177,7 @@ def main(
             upstream_org=upstream_org,
             verbose=verbose,
             non_interactive=non_interactive,
+            assume_yes=assume_yes,
             output=output,
             fetch=fetch,
             pre_commit=pre_commit,
