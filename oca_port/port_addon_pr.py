@@ -879,6 +879,23 @@ class BranchesDiff(Output):
                     pr_commit_paths = {
                         path for path in pr_commit.paths if not path_to_skip(path)
                     }
+                    if (
+                        self.app.skip_similar_commits
+                        and len(pr_commit.summary) > 20
+                        and (
+                            pr_commit.summary,
+                            pr_commit.author_email,
+                        )
+                        in [
+                            (c.summary, c.author_email)
+                            for c in self.to_branch_path_commits
+                        ]
+                    ):
+                        print(
+                            f"SKIPPING '{pr_commit.summary}' because a similar commit "
+                            f"(summary, author_email) was found. {pr_commit_paths} {pr_commit_sha}"
+                        )
+                        continue
                     pr.paths.update(pr_commit_paths)
                     # Check that this PR commit does not change the current
                     # addon we are interested in, in such case also check
