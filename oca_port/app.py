@@ -120,8 +120,12 @@ class App(Output):
 
     def _handle_odoo_versions(self):
         odoo_version_pattern = r"^[0-9]+\.[0-9]$"
-        source_version = re.search(odoo_version_pattern, self.source.branch)
-        target_version = re.search(odoo_version_pattern, self.target.branch)
+        source_version = re.search(
+            odoo_version_pattern, self.source.branch.split("-", 1)[0]
+        )
+        target_version = re.search(
+            odoo_version_pattern, self.target.branch.split("-", 1)[0]
+        )
         source_param = "--source-version" if self.cli else "source_version"
         target_param = "--target-version" if self.cli else "target_version"
         # Check Odoo versions from branches
