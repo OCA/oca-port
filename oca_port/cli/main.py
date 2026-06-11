@@ -122,7 +122,6 @@ from ..utils.misc import bcolors as bc
 @click.option("--clear-cache", is_flag=True, help="Clear the user's cache.")
 @click.option(
     "--github-token",
-    is_flag=True,
     help="""Token to use when requesting GitHub API (highly recommended
             to not trigger the "API rate limit exceeded" error).""",
 )
