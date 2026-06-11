@@ -57,6 +57,14 @@ class TestApp(common.CommonCase):
         self.assertFalse(app.destination.branch)
         self.assertFalse(app.destination.branch)
 
+        # Check with a feature branch
+        #   $ oca-port 15.0-feature 16.0 my_module
+        repo = self._git_repo(self.repo_path)
+        repo.remotes["origin"].fetch("15.0:15.0-feature")
+        app = self._create_app("15.0-feature", "16.0")
+        self.assertEqual(app.source_version, "15.0")
+        self.assertEqual(app.target_version, "16.0")
+
     def test_check_addon_exists(self):
         app = self._create_app(self.source1, self.target2)
         # source
