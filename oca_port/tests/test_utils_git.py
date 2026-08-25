@@ -79,3 +79,23 @@ class TestGit(common.CommonCase):
         self.assertEqual(c1, c2)
         self.assertEqual(c1.paths, c2.paths)
         self.assertNotEqual(c1.files, c2.files)  # Different file paths updated
+
+    def test_get_files_matches_stats(self):
+        """_get_files must return exactly the same path set as stats.files."""
+        raw_commit_sha = self._commit_change_on_branch(
+            self.repo_upstream_path, self.branch1
+        )
+        raw_commit = self.repo.commit(raw_commit_sha)
+        commit = g.Commit(raw_commit)
+        self.assertEqual(
+            commit._get_files(), set(raw_commit.stats.files.keys())
+        )
+
+    def test_get_files_root_commit(self):
+        """_get_files works on a root commit (no parents)."""
+        root_raw = self.repo.refs[self.branch1].commit
+        commit = g.Commit(root_raw)
+        self.assertEqual(
+            commit._get_files(),
+            {f"{self.addon}/__manifest__.py"},
+        )
