@@ -87,9 +87,7 @@ class TestGit(common.CommonCase):
         )
         raw_commit = self.repo.commit(raw_commit_sha)
         commit = g.Commit(raw_commit)
-        self.assertEqual(
-            commit._get_files(), set(raw_commit.stats.files.keys())
-        )
+        self.assertEqual(commit._get_files(), set(raw_commit.stats.files.keys()))
 
     def test_get_files_root_commit(self):
         """_get_files works on a root commit (no parents)."""
