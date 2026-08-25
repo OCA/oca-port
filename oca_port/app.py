@@ -11,6 +11,7 @@ from .exceptions import RemoteBranchValueError
 from .migrate_addon import MigrateAddon
 from .port_addon_pr import PortAddonPullRequest
 from .utils.git import Branch
+from .utils import misc
 from .utils.github import GitHub
 from .utils.misc import Output, bcolors as bc, extract_ref_info
 
@@ -112,6 +113,19 @@ class App(Output):
         # Check if source & target branches exist
         self._check_branch_exists(self.source.ref, raise_exc=True)
         self._check_branch_exists(self.target.ref, raise_exc=True)
+        # Warn about partial clones: commit scanning would lazily fetch
+        # objects over the network, making the analysis very slow.
+        promisor_remotes = misc.get_promisor_remotes(self.repo)
+        if promisor_remotes:
+            remote = promisor_remotes[0]
+            self._print(
+                f"{bc.WARNING}⚠️  Remote '{remote}' is a partial clone "
+                f"(object filter): scanning commits may download data from "
+                "the network and take a very long time.\n"
+                f"Consider converting it to a full clone first, e.g.:\n"
+                f"\tgit config --unset-all remote.{remote}.partialclonefilter\n"
+                f"\tgit fetch {remote} --unshallow{bc.END}"
+            )
         # GitHub API helper
         self.github = GitHub(self.github_token)
         # Initialize storage & cache

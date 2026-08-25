@@ -96,3 +96,14 @@ class TestMisc(common.CommonCase):
         }
         info = misc.extract_ref_info(repo, "source", ref)
         self.assertDictEqual(info, expected_info)
+
+
+class TestPromisorRemotes(common.CommonCase):
+    def test_normal_clone_has_no_promisor_remotes(self):
+        repo = self._git_repo(self.repo_path)
+        self.assertEqual(misc.get_promisor_remotes(repo), [])
+
+    def test_partial_clone_detected(self):
+        repo = self._git_repo(self.repo_path)
+        repo.git.config("--local", "remote.origin.promisor", "true")
+        self.assertEqual(misc.get_promisor_remotes(repo), ["origin"])
