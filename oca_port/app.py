@@ -3,6 +3,7 @@
 import pathlib
 from dataclasses import dataclass
 import re
+import sys
 
 import git
 
@@ -118,13 +119,14 @@ class App(Output):
         promisor_remotes = misc.get_promisor_remotes(self.repo)
         if promisor_remotes:
             remote = promisor_remotes[0]
-            self._print(
+            print(
                 f"{bc.WARNING}⚠️  Remote '{remote}' is a partial clone "
                 f"(object filter): scanning commits may download data from "
                 "the network and take a very long time.\n"
                 f"Consider converting it to a full clone first, e.g.:\n"
                 f"\tgit config --unset-all remote.{remote}.partialclonefilter\n"
-                f"\tgit fetch {remote} --unshallow{bc.END}"
+                f"\tgit fetch {remote} --unshallow{bc.END}",
+                file=sys.stderr,
             )
         # GitHub API helper
         self.github = GitHub(self.github_token)
