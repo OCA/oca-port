@@ -43,3 +43,19 @@ class TestUserCache(common.CommonCase):
         self.assertFalse(self.cache.get_commit_files(sha))
         self.cache.set_commit_files(sha, files)
         self.assertEqual(self.cache.get_commit_files(sha), files)
+
+    def test_periodic_flush_default_interval(self):
+        """Entries reach disk automatically once write_interval is reached."""
+        self.cache.write_interval = 1
+        sha = "FLUSH1"
+        self.cache.set_commit_files(sha, ["a/b"])
+        fresh = cache.UserCache(self.cache.app)
+        self.assertEqual(fresh.get_commit_files(sha), ["a/b"])
+
+    def test_no_flush_below_interval(self):
+        """Below the interval nothing is written (end-of-run save handles it)."""
+        self.cache.write_interval = 100
+        sha = "FLUSH-N"
+        self.cache.set_commit_files(sha, ["a/b"])
+        fresh = cache.UserCache(self.cache.app)
+        self.assertFalse(fresh.get_commit_files(sha))

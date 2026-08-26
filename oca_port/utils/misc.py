@@ -148,3 +148,23 @@ def update_terms_in_directory(dir_path, old_term, new_term):
         _logger.warning(
             f"⚠️  Unable to rename '{old_term}' terms to '{new_term}' in {dir_path} directory"
         )
+
+
+def get_promisor_remotes(repo):
+    """Return names of remotes configured as promisor (partial clones).
+
+    Partial clones (e.g. created with '--filter=blob:none') make tools
+    reading file contents extremely slow, as objects are lazily fetched
+    from the network.
+    """
+    reader = repo.config_reader()
+    names = []
+    for section in reader.sections():
+        if section.startswith("remote"):
+            try:
+                if reader.get_value(section, "promisor", False):
+                    name = section.split(" ", 1)[-1].strip('"')
+                    names.append(name)
+            except (ValueError, TypeError):
+                continue
+    return names

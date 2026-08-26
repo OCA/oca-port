@@ -104,6 +104,17 @@ And if the module has been moved to another repository, you can specify its remo
     $ git remote add new_repo git@github.com:OCA/new-repo.git
     $ oca-port-pr blacklist OCA/wms#250,OCA/wms#251 16.0 shopfloor --remote new_repo
 
+### Cache behavior
+
+Analyzed data (PRs of commits, updated files) is cached under the user's
+cache directory and flushed periodically (every 100 new entries) so an
+interrupted process keeps its progress.
+
+Two environment variables tune this:
+
+    $ export OCA_PORT_CACHE_WRITE_INTERVAL=50   # flush every 50 entries (0 = only at end)
+    $ export OCA_PORT_AGRESSIVE_CACHE_WRITE=1   # flush after every entry (legacy)
+
 ## <a name="migrate"/>Migration of addon
 
 The tool follows the usual OCA migration guide to port commits of an addon,
