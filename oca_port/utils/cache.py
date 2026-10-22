@@ -101,6 +101,17 @@ class UserCache:
         # coming from such branch in the behalf of upstream organization/repo,
         # that could produce wrong cache results for further use.
         self.readonly = not self.app.source.org
+        self._unsaved_changes = 0
+        self.write_interval = 100
+        interval_env = os.environ.get("OCA_PORT_CACHE_WRITE_INTERVAL")
+        if interval_env:
+            try:
+                self.write_interval = max(int(interval_env), 0)
+            except ValueError:
+                pass
+        # Backward-compatible escape hatch (previous undocumented behavior)
+        if os.environ.get("OCA_PORT_AGRESSIVE_CACHE_WRITE"):
+            self.write_interval = 1
         self.dir_path = self._get_dir_path()
         self._ported_commits_path = self._get_ported_commits_path()
         self._ported_commits = self._get_ported_commits()
@@ -204,6 +215,7 @@ class UserCache:
         pr_number = data["number"]
         self._commits_to_port["pull_requests"][str(pr_number)] = data
         self._commits_to_port["commits"][commit_sha]["pr"] = pr_number
+        self._register_change()
 
     def get_pr_from_commit(self, commit_sha: str):
         """Return the original PR data of a commit."""
@@ -223,12 +235,18 @@ class UserCache:
         if self.readonly:
             return
         self._commits_data[commit_sha]["files"] = list(files)
-        if os.environ.get("OCA_PORT_AGRESSIVE_CACHE_WRITE"):
-            # IO can be very slow on some filesystems (like checking modified
-            # paths of a commit), and saving the cache on each analyzed commit
-            # could help in case current oca-port process is killed before
-            # writing its cache on disk, so the next call will be faster.
-            self._save_commits_data()
+        self._register_change()
+
+    def _register_change(self):
+        """Flush caches to disk every 'write_interval' stored entries.
+
+        Keeps progress when the process is killed during long analyses,
+        instead of losing everything until the final save().
+        """
+        self._unsaved_changes += 1
+        if self.write_interval and self._unsaved_changes >= self.write_interval:
+            self.save()
+            self._unsaved_changes = 0
 
     def save(self):
         """Save cache files."""

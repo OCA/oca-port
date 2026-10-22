@@ -131,14 +131,24 @@ class Commit:
 
         Leverage the user's cache if one is provided as git can be quite slow
         to retrieve such data from big repository.
+
+        Use 'git diff-tree --name-only' instead of 'commit.stats' (numstat):
+        it does not require reading file contents (blobs), which makes a huge
+        difference on partial clones (e.g. cloned with '--filter=blob:none'),
+        where every blob would otherwise be lazily fetched over the network.
         """
         files = set()
         if self.cache:
             files = self.cache.get_commit_files(self.hexsha)
         if not files:
-            files = {
-                f for f in set(self.raw_commit.stats.files.keys()) if "=>" not in f
-            }
+            raw = self.raw_commit
+            args = ["-r", "--no-renames", "--name-only", "--no-commit-id", "-z"]
+            if raw.parents:
+                args += [raw.parents[0].hexsha, raw.hexsha]
+            else:
+                args += ["--root", raw.hexsha]
+            output = raw.repo.git.diff_tree(*args, "--")
+            files = {path for path in output.split("\x00") if path}
             if self.cache:
                 self.cache.set_commit_files(self.hexsha, files)
         return files
