@@ -637,6 +637,8 @@ class BranchesDiff(Output):
 
     def __init__(self, app):
         self.app = app
+        # Commit objects shared between the different scans of the branches
+        self._commits = {}
         # Retrieve modified files of all commits at once, much faster than
         # requesting them commit by commit
         self._commits_files = {}
@@ -692,21 +694,29 @@ class BranchesDiff(Output):
             - a list of Commit objects `[Commit, ...]`
             - a dict of Commits objects grouped by SHA `{SHA: Commit, ...}`
         """
-        commits = self.app.repo.iter_commits(branch, paths=path)
+        # Same as 'repo.iter_commits()' but only get SHAs, commits data being
+        # read once even if several scans are done on the same branch
+        shas = self.app.repo.git.rev_list(branch, "--", str(path)).split()
         commits_list = []
         commits_by_sha = {}
-        for commit in commits:
-            if self.app.cache.is_commit_ported(commit.hexsha):
+        for sha in shas:
+            if self.app.cache.is_commit_ported(sha):
                 continue
-            com = self._new_commit(commit, rootdir)
+            com = self._get_commit(sha, rootdir)
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
-            commits_by_sha[commit.hexsha] = com
+            commits_by_sha[sha] = com
         # Put ancestors at the beginning of the list to loop with
         # the expected order
         commits_list.reverse()
         return commits_list, commits_by_sha
+
+    def _get_commit(self, sha, rootdir):
+        key = (sha, str(rootdir))
+        if key not in self._commits:
+            self._commits[key] = self._new_commit(self.app.repo.commit(sha), rootdir)
+        return self._commits[key]
 
     def _new_commit(self, raw_commit, rootdir):
         return g.Commit(
