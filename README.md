@@ -115,6 +115,14 @@ Two environment variables tune this:
     $ export OCA_PORT_CACHE_WRITE_INTERVAL=50   # flush every 50 entries (0 = only at end)
     $ export OCA_PORT_AGRESSIVE_CACHE_WRITE=1   # flush after every entry (legacy)
 
+### GitHub requests
+
+The original PRs of commits are looked up on GitHub with 8 concurrent
+requests. To stay below the API rate limits in some environments, this
+number can be lowered (1 = no concurrency):
+
+    $ export OCA_PORT_GITHUB_WORKERS=2
+
 ## <a name="migrate"/>Migration of addon
 
 The tool follows the usual OCA migration guide to port commits of an addon,
