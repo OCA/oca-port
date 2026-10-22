@@ -148,6 +148,8 @@ class MigrateAddon(Output):
                 self.app.storage.commit()
                 self._print_tips(blacklisted=True)
                 return False, None
+            # Remove the non-installable addon (if any) to port its history
+            self._remove_non_installable_addon()
             # Port git history
             with tempfile.TemporaryDirectory() as patches_dir:
                 self._generate_patches(patches_dir)
@@ -195,12 +197,8 @@ class MigrateAddon(Output):
         #         )
         #         return False
         # Check if addon exists in git trees (=> already migrated)
-        source_addon_exists = self.app._check_addon_exists(
-            self.app.source, self.app.to_branch
-        )
-        target_addon_exists = self.app._check_addon_exists(
-            self.app.target, self.app.to_branch
-        )
+        source_addon_exists = self._check_addon_migrated(self.app.source)
+        target_addon_exists = self._check_addon_migrated(self.app.target)
         if source_addon_exists or target_addon_exists:
             addon = (
                 self.app.source.addon if source_addon_exists else self.app.target.addon
@@ -213,6 +211,18 @@ class MigrateAddon(Output):
             )
             return True
         return False
+
+    def _check_addon_migrated(self, ref):
+        """Returns True if the addon of `ref` is migrated on the target branch.
+
+        An addon that exists but is not installable is not considered as migrated.
+        """
+        if not self.app._check_addon_exists(ref, self.app.to_branch):
+            return False
+        if not self.app._check_addon_installable(ref, self.app.to_branch):
+            self.app.print_addon_not_installable_warning(ref)
+            return False
+        return True
 
     def _check_addon_blacklisted(self):
         blacklisted = self.app.storage.is_addon_blacklisted()
@@ -283,6 +293,29 @@ class MigrateAddon(Output):
                 "--no-track", "-b", self.mig_branch.name, self.app.to_branch.ref()
             )
         return create_branch
+
+    def _remove_non_installable_addon(self):
+        """Remove the non-installable addon from the migration branch.
+
+        The git history of the addon is then replayed from scratch on top of
+        this removal commit, exactly as if the addon was not present.
+        """
+        if not self.app._check_addon_exists(self.app.target, self.app.to_branch):
+            return False
+        addon_path = self.app.target.addon_path
+        print(
+            f"\tRemove non-installable {bc.BOLD}{self.app.target.addon}{bc.END} "
+            "before porting its history..."
+        )
+        self.app.repo.git.rm("-r", "--quiet", str(addon_path))
+        g.commit(
+            self.app.repo,
+            msg=(
+                f"[REM] {self.app.target.addon}: remove non-installable version "
+                f"before migration to {self.app.target_version}"
+            ),
+        )
+        return True
 
     def _generate_patches(self, patches_dir):
         print("\tGenerate patches...")

@@ -1,5 +1,6 @@
 # Copyright 2022 Camptocamp SA
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
+import ast
 import pathlib
 from dataclasses import dataclass
 import re
@@ -12,7 +13,7 @@ from .migrate_addon import MigrateAddon
 from .port_addon_pr import PortAddonPullRequest
 from .utils.git import Branch
 from .utils.github import GitHub
-from .utils.misc import Output, bcolors as bc, extract_ref_info
+from .utils.misc import MANIFEST_NAMES, Output, bcolors as bc, extract_ref_info
 
 
 @dataclass
@@ -306,6 +307,27 @@ class App(Output):
             raise ValueError(error)
         return True
 
+    def _get_addon_manifest(self, ref, branch):
+        """Returns the manifest of an addon on `branch` (without checkout)."""
+        tree = self.repo.commit(branch.ref()).tree
+        for manifest_name in MANIFEST_NAMES:
+            try:
+                blob = tree / str(ref.addon_path / manifest_name)
+            except KeyError:
+                continue
+            try:
+                return ast.literal_eval(blob.data_stream.read().decode())
+            except (SyntaxError, ValueError):
+                return {}
+        return {}
+
+    def _check_addon_installable(self, ref, branch):
+        """Returns True if an addon exists on `branch` and is installable."""
+        if not self._check_addon_exists(ref, branch):
+            return False
+        manifest = self._get_addon_manifest(ref, branch)
+        return bool(manifest.get("installable", True))
+
     def check_addon_exists_from_branch(self, raise_exc=False):
         """Check that `addon` exists on the source branch`."""
         return self._check_addon_exists(
@@ -316,6 +338,23 @@ class App(Output):
         """Check that `addon` exists on the target branch`."""
         return self._check_addon_exists(
             self.target, self.to_branch, raise_exc=raise_exc
+        )
+
+    def check_addon_installable_to_branch(self):
+        """Check that `addon` exists on the target branch and is installable."""
+        return self._check_addon_installable(self.target, self.to_branch)
+
+    def print_addon_not_installable_warning(self, ref=None):
+        """Warn the user that `addon` exists on the target branch but is not installable."""
+        ref = ref or self.target
+        # Print the warning only once
+        if getattr(self, "_not_installable_warned", False):
+            return
+        self._not_installable_warned = True
+        self._print(
+            f"⚠️  {bc.BOLD}{ref.addon}{bc.END} exists "
+            f"on {bc.BOLD}{self.to_branch.ref()}{bc.END} but is "
+            f"{bc.WARNING}not installable{bc.ENDC}, considering it as not migrated."
         )
 
     def run(self):

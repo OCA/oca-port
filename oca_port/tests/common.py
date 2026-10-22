@@ -179,6 +179,20 @@ class CommonCase(unittest.TestCase):
         commit = repo.index.commit(f"[FIX] {self.addon}: fix dependency")
         return commit.hexsha
 
+    def _set_addon_not_installable(self, repo_path, branch):
+        """Mark the addon as not installable on `branch` (upstream repository)."""
+        repo = git.Repo(repo_path)
+        repo.git.checkout(branch)
+        with open(self.manifest_path, "r+") as manifest:
+            content = manifest.read()
+            content = content.replace('"installable": True', '"installable": False')
+            manifest.seek(0)
+            manifest.write(content)
+            manifest.truncate()
+        repo.index.add(self.manifest_path)
+        commit = repo.index.commit(f"[REM] {self.addon}: not installable")
+        return commit.hexsha
+
     def _create_app(self, source, target, destination=None, **kwargs):
         params = {
             "source": source,

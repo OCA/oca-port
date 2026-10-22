@@ -75,7 +75,13 @@ class PortAddonPullRequest(Output):
         self._results = {"process": "port_commits", "results": {}}
 
     def run(self):
-        if not self.app.check_addon_exists_to_branch():
+        addon_exists = self.app.check_addon_exists_to_branch()
+        if addon_exists and not self.app.check_addon_installable_to_branch():
+            # A non-installable addon on the target branch is not considered as
+            # migrated: there is nothing to port, it has to be migrated.
+            self.app.print_addon_not_installable_warning()
+            addon_exists = False
+        if not addon_exists:
             if self.app.non_interactive:
                 if self.app.output:
                     return False, self._render_output(self.app.output, {})

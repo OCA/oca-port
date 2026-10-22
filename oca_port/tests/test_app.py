@@ -72,6 +72,50 @@ class TestApp(common.CommonCase):
         # target
         self.assertFalse(app.check_addon_exists_to_branch())
 
+    def test_check_addon_installable(self):
+        repo = self._git_repo(self.repo_path)
+        target1 = extract_ref_info(repo, "target", self.target1)
+        app = self._create_app(self.source1, self.target1)
+        self.assertTrue(app.check_addon_exists_to_branch())
+        self.assertTrue(app.check_addon_installable_to_branch())
+        # Mark the addon as not installable on the target branch
+        self._set_addon_not_installable(self.repo_upstream_path, target1.branch)
+        app = self._create_app(self.source1, self.target1, fetch=True)
+        self.assertTrue(app.check_addon_exists_to_branch())
+        self.assertFalse(app.check_addon_installable_to_branch())
+        # An addon that doesn't exist is not installable either
+        app = self._create_app(self.source1, self.target2)
+        self.assertFalse(app.check_addon_exists_to_branch())
+        self.assertFalse(app.check_addon_installable_to_branch())
+
+    def test_app_module_not_installable_to_migrate(self):
+        # The addon exists on the target branch but is not installable:
+        # it has to be migrated, not ported.
+        repo = self._git_repo(self.repo_path)
+        target1 = extract_ref_info(repo, "target", self.target1)
+        self._set_addon_not_installable(self.repo_upstream_path, target1.branch)
+        app = self._create_app(self.source1, self.target1, fetch=True)
+        try:
+            app.run()
+        except SystemExit as exc:
+            # exit code 100 means the module could be migrated
+            self.assertEqual(exc.args[0], 100)
+
+    def test_app_module_not_installable_to_migrate_non_interactive(self):
+        repo = self._git_repo(self.repo_path)
+        target1 = extract_ref_info(repo, "target", self.target1)
+        self._set_addon_not_installable(self.repo_upstream_path, target1.branch)
+        app = self._create_app(
+            self.source1, self.target1, fetch=True, non_interactive=True
+        )
+        result = app.run()
+        self.assertTrue(result)
+        self.assertIsInstance(result, bool)
+        # JSON output reports the migration, not a PRs porting
+        app = self._create_app(self.source1, self.target1, output="json")
+        result = app.run()
+        self.assertEqual(json.loads(result)["process"], "migrate")
+
     def test_app_nothing_to_port(self):
         app = self._create_app(self.source1, self.target1)
         try:
