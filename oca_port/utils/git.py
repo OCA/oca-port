@@ -73,11 +73,14 @@ class Commit:
     other_equality_attrs = ("paths",)
     eq_strict = True
 
-    def __init__(self, commit, addons_path=".", eq_paths=None, cache=None):
+    def __init__(self, commit, addons_path=".", eq_paths=None, cache=None, files=None):
         """Initializes a new Commit instance from a GitPython Commit object.
 
         `eq_paths` is used to declare equivalent paths, to ease commits
         comparison. This is a mapping `{'my_module': 'new_module', ...}`.
+
+        `files` can be set to provide the modified file paths of the commit
+        if they are already known (see `get_commits_files`).
         """
         self.raw_commit = commit
         self.addons_path = addons_path
@@ -92,8 +95,8 @@ class Commit:
         self.hexsha = commit.hexsha
         self.committed_datetime = commit.committed_datetime.replace(tzinfo=None)
         self.parents = [parent.hexsha for parent in commit.parents]
-        self._files = set()
-        self._paths = set()
+        self._files = set(files) if files is not None else None
+        self._paths = None
         self.eq_paths = {}
         if eq_paths:
             # If a == b, then b == a
@@ -106,9 +109,8 @@ class Commit:
     def files(self):
         """Returns modified file paths."""
         # Access git storage or cache only on demand to avoid too much IO
-        files = self._get_files()
-        if not self._files:
-            self._files = files
+        if self._files is None:
+            self._files = self._get_files()
         return self._files
 
     @property
@@ -119,9 +121,9 @@ class Commit:
         the `addons_path` is `x`, the root nodes updated by this commit are
         `a` (folder), `d` (folder) and `f.txt` (file).
         """
-        if self._paths:
+        if self._paths is not None:
             return self._paths
-        self._paths = set()
+        paths = set()
         for f in self.files:
             # Could raise "ValueError: 'f' is not in the subpath of 'addons_path'"
             # in such case we ignore these files, and keep ones in 'addons_path'
@@ -130,8 +132,9 @@ class Commit:
                 eq_commit_path = CommitPath(self.addons_path, f, eq_paths=self.eq_paths)
             except ValueError:
                 continue
-            self._paths.add(commit_path)
-            self._paths.add(eq_commit_path)
+            paths.add(commit_path)
+            paths.add(eq_commit_path)
+        self._paths = paths
         return self._paths
 
     def _get_files(self):
@@ -374,3 +377,35 @@ def check_path_exists(repo, ref, path, rootdir=None):
         root_tree /= str(rootdir)
     paths = [t.path for t in root_tree.trees]
     return path in paths
+
+
+def get_commits_files(repo, ref):
+    """Return the file paths modified by each commit reachable from `ref`.
+
+    Files are compared with the first parent, renames disabled (same as
+    `Commit._get_files()`), retrieved for all commits with one single git
+    command instead of one per commit. File contents (blobs) are not read,
+    and paths are not quoted (`-z`) even if they contain special characters.
+    Merge commits are not included.
+
+    :return: dict `{SHA: {file_path, ...}, ...}`
+    """
+    # Output: '\x01<SHA>\x00' for each commit, followed by '\n<file>\x00...'
+    # if the commit updates some files
+    output = repo.git.log(
+        ref,
+        "-z",
+        "--no-merges",
+        "--no-renames",
+        "--no-color",
+        "--no-ext-diff",
+        "--name-only",
+        "--format=%x01%H",
+    )
+    commits_files = {}
+    for chunk in output.split("\x01")[1:]:
+        sha, __, files = chunk.partition("\x00")
+        if files.startswith("\n"):
+            files = files[1:]
+        commits_files[sha] = {f for f in files.split("\x00") if f}
+    return commits_files

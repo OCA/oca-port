@@ -1,6 +1,7 @@
 # Copyright 2023 Camptocamp SA
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import os
 from collections import namedtuple
 
 
@@ -113,3 +114,26 @@ class TestGit(common.CommonCase):
         self.assertEqual(path, "new_module")
         with self.assertRaises(ValueError):
             g.CommitPath("addons", "other/my_module/__init__.py")
+
+    def test_get_commits_files(self):
+        commits_files = g.get_commits_files(self.repo, self.branch1)
+        self.assertTrue(commits_files)
+        for raw_commit in self.repo.iter_commits(self.branch1, no_merges=True):
+            self.assertEqual(
+                commits_files[raw_commit.hexsha], set(raw_commit.stats.files)
+            )
+
+    def test_get_commits_files_special_chars(self):
+        # Work on the cloned repository, the upstream one is shared by tests
+        repo = self._git_repo(self.repo_path)
+        for file_name in ("é.po", "a b.py"):
+            with open(os.path.join(repo.working_tree_dir, file_name), "w") as file_:
+                file_.write("test")
+        repo.index.add(["é.po", "a b.py"])
+        raw_commit = repo.index.commit("Special chars")
+        commits_files = g.get_commits_files(repo, raw_commit.hexsha)
+        self.assertEqual(commits_files[raw_commit.hexsha], {"é.po", "a b.py"})
+        # Empty commit
+        raw_commit = repo.index.commit("Empty", parent_commits=[raw_commit])
+        commits_files = g.get_commits_files(repo, raw_commit.hexsha)
+        self.assertEqual(commits_files[raw_commit.hexsha], set())

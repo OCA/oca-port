@@ -637,6 +637,11 @@ class BranchesDiff(Output):
 
     def __init__(self, app):
         self.app = app
+        # Retrieve modified files of all commits at once, much faster than
+        # requesting them commit by commit
+        self._commits_files = {}
+        for branch in (self.app.from_branch, self.app.to_branch):
+            self._commits_files.update(g.get_commits_files(self.app.repo, branch.ref()))
         self.from_branch_path_commits, _ = self._get_branch_commits(
             self.app.from_branch.ref(),
             self.app.source.addons_rootdir,
@@ -693,12 +698,7 @@ class BranchesDiff(Output):
         for commit in commits:
             if self.app.cache.is_commit_ported(commit.hexsha):
                 continue
-            com = g.Commit(
-                commit,
-                addons_path=rootdir,
-                eq_paths={self.app.source.addon: self.app.target.addon},
-                cache=self.app.cache,
-            )
+            com = self._new_commit(commit, rootdir)
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
@@ -707,6 +707,15 @@ class BranchesDiff(Output):
         # the expected order
         commits_list.reverse()
         return commits_list, commits_by_sha
+
+    def _new_commit(self, raw_commit, rootdir):
+        return g.Commit(
+            raw_commit,
+            addons_path=rootdir,
+            eq_paths={self.app.source.addon: self.app.target.addon},
+            cache=self.app.cache,
+            files=self._commits_files.get(raw_commit.hexsha),
+        )
 
     @staticmethod
     def _skip_commit(commit):
@@ -879,11 +888,8 @@ class BranchesDiff(Output):
                         # Ignore commits referenced by a PR but not present
                         # in the stable branches
                         continue
-                    pr_commit = g.Commit(
-                        raw_commit,
-                        addons_path=self.app.source.addons_rootdir,
-                        eq_paths={self.app.source.addon: self.app.target.addon},
-                        cache=self.app.cache,
+                    pr_commit = self._new_commit(
+                        raw_commit, self.app.source.addons_rootdir
                     )
                     if self._skip_commit(pr_commit):
                         continue
