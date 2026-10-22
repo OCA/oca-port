@@ -2,7 +2,7 @@
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl)
 
 import contextlib
-import pathlib
+import os
 import re
 import subprocess
 from collections import abc
@@ -42,13 +42,21 @@ class CommitPath(str):
     def __new__(cls, addons_path, value, eq_paths=None):
         if not eq_paths:
             eq_paths = {}
-        file_path = pathlib.Path(value).relative_to(addons_path)
-        root_node = file_path.parts[0]
+        # Plain string operations instead of 'pathlib' as this is called for
+        # each file of each commit of the analyzed branches.
+        file_path = value
+        root = os.path.normpath(str(addons_path))
+        if root != ".":
+            prefix = root.rstrip("/") + "/"
+            if not file_path.startswith(prefix):
+                raise ValueError(f"{value!r} is not in the subpath of {root!r}")
+            file_path = file_path[len(prefix) :]
+        root_node, sep, __ = file_path.partition("/")
         if eq_paths.get(root_node):
             root_node = eq_paths[root_node]
         obj = super().__new__(cls, root_node)
         # As soon as `file_path` has a parent, the root node is obviously a folder
-        obj.isdir = bool(file_path.parent.name)
+        obj.isdir = bool(sep)
         return obj
 
 

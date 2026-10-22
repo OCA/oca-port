@@ -97,3 +97,19 @@ class TestGit(common.CommonCase):
             commit._get_files(),
             {f"{self.addon}/__manifest__.py"},
         )
+
+    def test_commit_path(self):
+        path = g.CommitPath(".", "my_module/models/file.py")
+        self.assertEqual(path, "my_module")
+        self.assertTrue(path.isdir)
+        path = g.CommitPath(".", "README.md")
+        self.assertEqual(path, "README.md")
+        self.assertFalse(path.isdir)
+        path = g.CommitPath("addons", "addons/my_module/__init__.py")
+        self.assertEqual(path, "my_module")
+        path = g.CommitPath(
+            ".", "my_module/__init__.py", eq_paths={"my_module": "new_module"}
+        )
+        self.assertEqual(path, "new_module")
+        with self.assertRaises(ValueError):
+            g.CommitPath("addons", "other/my_module/__init__.py")
