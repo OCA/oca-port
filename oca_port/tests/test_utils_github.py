@@ -14,6 +14,11 @@ class TestGitHub(unittest.TestCase):
     def test_token(self):
         assert self.gh.token == "test"
 
+    def test_session_retries(self):
+        adapter = self.gh.session.get_adapter(github.GITHUB_API_URL)
+        assert adapter.max_retries.total == 3
+        assert 503 in adapter.max_retries.status_forcelist
+
     def test_addon_in_text(self):
         # Matching OK
         res = self.gh._addon_in_text("a_b", "[16.0][MIG] a_b: migration to 16.0")
