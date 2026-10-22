@@ -421,33 +421,7 @@ class PortAddonPullRequest(Output):
                 self._print("\t\t\tℹ️  Nothing to port from this commit, skipping")
                 continue
             try:
-                # Generate patches to port from source module
-                patches_dir = tempfile.mkdtemp()
-                self.app.repo.git.format_patch(
-                    "--keep-subject",
-                    "-o",
-                    patches_dir,
-                    "-1",
-                    commit.hexsha,
-                    "--",
-                    *paths_to_port,
-                )
-                patches = [
-                    os.path.join(patches_dir, f)
-                    for f in sorted(os.listdir(patches_dir))
-                ]
-                # Apply patches on target module (could be the same than source one
-                # or a new one if it has been renamed).
-                n_leading_paths = len(self.app.source.addon_path.parts) + 1
-                self.app.repo.git.am(
-                    "-3",
-                    "--keep",
-                    *patches,
-                    f"-p{n_leading_paths}",  # Remove 'a/my_module' from patch
-                    "--directory",
-                    self.app.target.addon_path,  # Prepend 'my_module[_renamed]' to patch
-                )
-                shutil.rmtree(patches_dir)
+                self._apply_commit(commit, paths_to_port)
             except git.exc.GitCommandError as exc:
                 self._print(f"{bc.FAIL}ERROR:{bc.ENDC}\n{exc}\n")
                 # High chance a conflict occurs, ask the user to resolve it
@@ -458,6 +432,43 @@ class PortAddonPullRequest(Output):
                     self.app.repo.git.am("--abort")
                     continue
         return True
+
+    def _apply_commit(self, commit, paths):
+        source_path = self.app.source.addon_path
+        target_path = self.app.target.addon_path
+        if source_path == target_path:
+            self._apply_patch(commit, paths)
+            return
+        # Only the paths of the renamed addon are moved, the other addons
+        # updated by the commit keep their own path.
+        n_parts = len(source_path.parts)
+        addon_paths = [
+            p for p in paths if pathlib.Path(p).parts[:n_parts] == source_path.parts
+        ]
+        other_paths = [p for p in paths if p not in addon_paths]
+        if addon_paths:
+            self._apply_patch(
+                commit,
+                addon_paths,
+                f"-p{n_parts + 1}",  # Remove 'a/my_module' from patch
+                "--directory",
+                target_path,  # Prepend 'my_module_renamed' to patch
+            )
+        if other_paths:
+            self._apply_patch(commit, other_paths)
+
+    def _apply_patch(self, commit, paths, *am_args):
+        patches_dir = tempfile.mkdtemp()
+        try:
+            self.app.repo.git.format_patch(
+                "--keep-subject", "-o", patches_dir, "-1", commit.hexsha, "--", *paths
+            )
+            patches = [
+                os.path.join(patches_dir, f) for f in sorted(os.listdir(patches_dir))
+            ]
+            self.app.repo.git.am("-3", "--keep", *patches, *am_args)
+        finally:
+            shutil.rmtree(patches_dir)
 
     def _skip_diff(self, commit, diff):
         """Check if a commit diff should be skipped or not.
