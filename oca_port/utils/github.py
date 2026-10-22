@@ -64,7 +64,7 @@ class GitHub:
                 data["base"]["ref"] == branch
                 and data["base"]["repo"]["full_name"] == f"{from_org}/{repo_name}"
             ):
-                data2 = self.request(data["commits_url"])
+                data2 = self.request(data["commits_url"], params={"per_page": 100})
                 pr_commits = [d["sha"] for d in data2]
                 if commit_sha in pr_commits:
                     return data
