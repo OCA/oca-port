@@ -121,3 +121,34 @@ class TestGit(common.CommonCase):
         raw_commit = repo.index.commit("Empty", parent_commits=[raw_commit])
         commits_files = g.get_commits_files(repo, raw_commit.hexsha)
         self.assertEqual(commits_files[raw_commit.hexsha], set())
+
+    def test_commit_index(self):
+        raw_commits = list(self.repo.iter_commits(self.branch1))
+        commits = [g.Commit(raw_commit) for raw_commit in raw_commits]
+        index = g.CommitIndex(commits[1:])
+        self.assertNotIn(commits[0], index)
+        for commit in commits[1:]:
+            self.assertIn(g.Commit(commit.raw_commit), index)
+            self.assertEqual(index.matches(commit), [commit])
+
+    def test_commit_index_message(self):
+        raw_commit = next(self.repo.iter_commits(self.branch1))
+        commit = g.Commit(raw_commit)
+        # Same author and date, different message: not in the index
+        other = g.Commit(raw_commit)
+        other.message = "Another message"
+        index = g.CommitIndex([other])
+        self.assertNotEqual(commit.eq_key, other.eq_key)
+        self.assertNotIn(commit, index)
+        with g.no_strict_commit_equality():
+            self.assertNotIn(commit, index)
+        # Message differing only by what 'git am' could alter: found when
+        # equality is not strict
+        ported = g.Commit(raw_commit)
+        ported.message = f"[16.0][MIG] {commit.message}"
+        index = g.CommitIndex([ported])
+        self.assertEqual(commit.eq_key, ported.eq_key)
+        self.assertNotIn(commit, index)
+        with g.no_strict_commit_equality():
+            self.assertIn(commit, index)
+            self.assertEqual(index.matches(commit), [ported])
