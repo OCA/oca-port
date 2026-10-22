@@ -137,3 +137,12 @@ class TestGit(common.CommonCase):
         raw_commit = repo.index.commit("Empty", parent_commits=[raw_commit])
         commits_files = g.get_commits_files(repo, raw_commit.hexsha)
         self.assertEqual(commits_files[raw_commit.hexsha], set())
+
+    def test_commit_index(self):
+        raw_commits = list(self.repo.iter_commits(self.branch1))
+        commits = [g.Commit(raw_commit) for raw_commit in raw_commits]
+        index = g.CommitIndex(commits[1:])
+        self.assertNotIn(commits[0], index)
+        for commit in commits[1:]:
+            self.assertIn(g.Commit(commit.raw_commit), index)
+            self.assertEqual(index.matches(commit), [commit])

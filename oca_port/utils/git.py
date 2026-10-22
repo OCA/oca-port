@@ -188,22 +188,30 @@ class Commit:
         if not isinstance(other, Commit):
             return super().__eq__(other)
         if self.__class__.eq_strict:
+            # Generator on purpose: stop at the first difference, so costly
+            # attributes like `paths` are computed only if needed.
             return all(
-                [
-                    getattr(self, attr) == getattr(other, attr)
-                    for attr in self._get_equality_attrs()
-                ]
+                getattr(self, attr) == getattr(other, attr)
+                for attr in self._get_equality_attrs()
             )
         else:
-            checks = [
+            return all(
                 (
                     self._lazy_eq_message(other)
                     if attr == "message"
                     else getattr(self, attr) == getattr(other, attr)
                 )
                 for attr in self._get_equality_attrs()
-            ]
-            return all(checks)
+            )
+
+    @property
+    def eq_key(self):
+        """Key shared by all commits that could be equal to this one.
+
+        Strict or not, commits equality always requires these attributes to
+        be identical, so it can be used to index commits.
+        """
+        return (self.author_name, self.author_email, self.authored_datetime)
 
     def __repr__(self):
         attrs = ", ".join([f"{k}={v}" for k, v in self.__dict__.items()])
@@ -409,3 +417,25 @@ def get_commits_files(repo, ref):
             files = files[1:]
         commits_files[sha] = {f for f in files.split("\x00") if f}
     return commits_files
+
+
+class CommitIndex:
+    """List of commits indexed on their `eq_key`, for fast membership tests.
+
+    `commit in index` gives the same result as `commit in commits`, without
+    comparing `commit` against every commit of the list.
+    """
+
+    def __init__(self, commits=None):
+        self._by_key = {}
+        for commit in commits or []:
+            self._by_key.setdefault(commit.eq_key, []).append(commit)
+
+    def __contains__(self, commit):
+        return any(commit == other for other in self._by_key.get(commit.eq_key, []))
+
+    def matches(self, commit):
+        """Return the commits equal to `commit`, in their original order."""
+        return [
+            other for other in self._by_key.get(commit.eq_key, []) if commit == other
+        ]

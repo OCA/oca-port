@@ -861,9 +861,11 @@ class BranchesDiff(Output):
         """
         commits_by_pr = defaultdict(list)
         fake_pr = g.PullRequest(*[""] * 6)
+        to_branch_path_commits = g.CommitIndex(self.to_branch_path_commits)
+        to_branch_all_commits = g.CommitIndex(self.to_branch_all_commits)
         # 1st loop to collect original PRs and stack orphaned commits in a fake PR
         for commit in self.from_branch_path_commits:
-            if commit in self.to_branch_all_commits:
+            if commit in to_branch_all_commits:
                 self.app.cache.mark_commit_as_ported(commit.hexsha)
                 continue
             # Get related Pull Request if any,
@@ -874,7 +876,7 @@ class BranchesDiff(Output):
             self._get_original_pr(commit, fallback_pr=fake_pr)
         # 2nd loop to actually analyze the content of commits/PRs
         for commit in self.from_branch_path_commits:
-            if commit in self.to_branch_all_commits:
+            if commit in to_branch_all_commits:
                 self.app.cache.mark_commit_as_ported(commit.hexsha)
                 continue
             # Get related Pull Request if any,
@@ -904,18 +906,17 @@ class BranchesDiff(Output):
                     # Indeed a commit could have been ported partially
                     # in the past (with git-format-patch), and we now want
                     # to port the remaining chunks.
-                    if pr_commit not in self.to_branch_path_commits:
+                    if pr_commit not in to_branch_path_commits:
                         paths = set(pr_commit_paths)
                         # A commit could have been ported several times
                         # if it was impacting several addons and the
                         # migration has been done with git-format-patch
                         # on each addon separately
-                        to_branch_all_commits = self.to_branch_all_commits[:]
                         skip_pr_commit = False
                         with g.no_strict_commit_equality():
-                            while pr_commit in to_branch_all_commits:
-                                index = to_branch_all_commits.index(pr_commit)
-                                ported_commit = to_branch_all_commits.pop(index)
+                            for ported_commit in to_branch_all_commits.matches(
+                                pr_commit
+                            ):
                                 ported_commit_paths = {
                                     path
                                     for path in ported_commit.paths
@@ -935,8 +936,8 @@ class BranchesDiff(Output):
                     # for the addon we are interested in.
                     # If the commit has already been included, skip it.
                     if (
-                        pr_commit in self.to_branch_path_commits
-                        and pr_commit in self.to_branch_all_commits
+                        pr_commit in to_branch_path_commits
+                        and pr_commit in to_branch_all_commits
                     ):
                         continue
                     existing_pr_commits = commits_by_pr.get(pr, [])
