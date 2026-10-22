@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import urllib.parse
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 
 import click
 import git
@@ -49,6 +50,9 @@ BOT_FILES_TO_SKIP = [
     "README.rst",
     "static/description/index.html",
 ]
+
+# Number of concurrent requests sent to GitHub to detect original PRs
+GITHUB_MAX_WORKERS = 8
 
 NEW_PR_URL = (
     "https://github.com/{from_org}/{repo_name}/compare/"
@@ -637,6 +641,18 @@ class BranchesDiff(Output):
 
     def __init__(self, app):
         self.app = app
+        # Commit objects shared between the different scans of the branches
+        self._commits = {}
+        # Original PR data of commits, `None` if a commit has no PR
+        self._prs_data = {}
+        self._has_github_remote = any(
+            "github.com" in remote.url for remote in self.app.repo.remotes
+        )
+        # Retrieve modified files of all commits at once, much faster than
+        # requesting them commit by commit
+        self._commits_files = {}
+        for branch in (self.app.from_branch, self.app.to_branch):
+            self._commits_files.update(g.get_commits_files(self.app.repo, branch.ref()))
         self.from_branch_path_commits, _ = self._get_branch_commits(
             self.app.from_branch.ref(),
             self.app.source.addons_rootdir,
@@ -687,26 +703,38 @@ class BranchesDiff(Output):
             - a list of Commit objects `[Commit, ...]`
             - a dict of Commits objects grouped by SHA `{SHA: Commit, ...}`
         """
-        commits = self.app.repo.iter_commits(branch, paths=path)
+        # Same as 'repo.iter_commits()' but only get SHAs, commits data being
+        # read once even if several scans are done on the same branch
+        shas = self.app.repo.git.rev_list(branch, "--", str(path)).split()
         commits_list = []
         commits_by_sha = {}
-        for commit in commits:
-            if self.app.cache.is_commit_ported(commit.hexsha):
+        for sha in shas:
+            if self.app.cache.is_commit_ported(sha):
                 continue
-            com = g.Commit(
-                commit,
-                addons_path=rootdir,
-                eq_paths={self.app.source.addon: self.app.target.addon},
-                cache=self.app.cache,
-            )
+            com = self._get_commit(sha, rootdir)
             if self._skip_commit(com):
                 continue
             commits_list.append(com)
-            commits_by_sha[commit.hexsha] = com
+            commits_by_sha[sha] = com
         # Put ancestors at the beginning of the list to loop with
         # the expected order
         commits_list.reverse()
         return commits_list, commits_by_sha
+
+    def _get_commit(self, sha, rootdir):
+        key = (sha, str(rootdir))
+        if key not in self._commits:
+            self._commits[key] = self._new_commit(self.app.repo.commit(sha), rootdir)
+        return self._commits[key]
+
+    def _new_commit(self, raw_commit, rootdir):
+        return g.Commit(
+            raw_commit,
+            addons_path=rootdir,
+            eq_paths={self.app.source.addon: self.app.target.addon},
+            cache=self.app.cache,
+            files=self._commits_files.get(raw_commit.hexsha),
+        )
 
     @staticmethod
     def _skip_commit(commit):
@@ -852,9 +880,18 @@ class BranchesDiff(Output):
         """
         commits_by_pr = defaultdict(list)
         fake_pr = g.PullRequest(*[""] * 6)
+        to_branch_path_commits = g.CommitIndex(self.to_branch_path_commits)
+        to_branch_all_commits = g.CommitIndex(self.to_branch_all_commits)
+        self._prefetch_original_prs(
+            [
+                commit
+                for commit in self.from_branch_path_commits
+                if commit not in to_branch_all_commits
+            ]
+        )
         # 1st loop to collect original PRs and stack orphaned commits in a fake PR
         for commit in self.from_branch_path_commits:
-            if commit in self.to_branch_all_commits:
+            if commit in to_branch_all_commits:
                 self.app.cache.mark_commit_as_ported(commit.hexsha)
                 continue
             # Get related Pull Request if any,
@@ -865,7 +902,7 @@ class BranchesDiff(Output):
             self._get_original_pr(commit, fallback_pr=fake_pr)
         # 2nd loop to actually analyze the content of commits/PRs
         for commit in self.from_branch_path_commits:
-            if commit in self.to_branch_all_commits:
+            if commit in to_branch_all_commits:
                 self.app.cache.mark_commit_as_ported(commit.hexsha)
                 continue
             # Get related Pull Request if any,
@@ -879,11 +916,8 @@ class BranchesDiff(Output):
                         # Ignore commits referenced by a PR but not present
                         # in the stable branches
                         continue
-                    pr_commit = g.Commit(
-                        raw_commit,
-                        addons_path=self.app.source.addons_rootdir,
-                        eq_paths={self.app.source.addon: self.app.target.addon},
-                        cache=self.app.cache,
+                    pr_commit = self._new_commit(
+                        raw_commit, self.app.source.addons_rootdir
                     )
                     if self._skip_commit(pr_commit):
                         continue
@@ -898,18 +932,17 @@ class BranchesDiff(Output):
                     # Indeed a commit could have been ported partially
                     # in the past (with git-format-patch), and we now want
                     # to port the remaining chunks.
-                    if pr_commit not in self.to_branch_path_commits:
+                    if pr_commit not in to_branch_path_commits:
                         paths = set(pr_commit_paths)
                         # A commit could have been ported several times
                         # if it was impacting several addons and the
                         # migration has been done with git-format-patch
                         # on each addon separately
-                        to_branch_all_commits = self.to_branch_all_commits[:]
                         skip_pr_commit = False
                         with g.no_strict_commit_equality():
-                            while pr_commit in to_branch_all_commits:
-                                index = to_branch_all_commits.index(pr_commit)
-                                ported_commit = to_branch_all_commits.pop(index)
+                            for ported_commit in to_branch_all_commits.matches(
+                                pr_commit
+                            ):
                                 ported_commit_paths = {
                                     path
                                     for path in ported_commit.paths
@@ -929,8 +962,8 @@ class BranchesDiff(Output):
                     # for the addon we are interested in.
                     # If the commit has already been included, skip it.
                     if (
-                        pr_commit in self.to_branch_path_commits
-                        and pr_commit in self.to_branch_all_commits
+                        pr_commit in to_branch_path_commits
+                        and pr_commit in to_branch_all_commits
                     ):
                         continue
                     existing_pr_commits = commits_by_pr.get(pr, [])
@@ -982,57 +1015,95 @@ class BranchesDiff(Output):
 
         This method is taking care of storing in cache the original PR of a commit.
         """
-        # Try to get the data from the user's cache first
-        data = self.app.cache.get_pr_from_commit(commit.hexsha)
+        sha = commit.hexsha
+        if sha not in self._prs_data:
+            # Try to get the data from the user's cache first
+            data = self.app.cache.get_pr_from_commit(sha)
+            if data:
+                self._prs_data[sha] = data
+            elif not self._has_github_remote:
+                return self._handle_fallback_pr(fallback_pr, commit)
+            else:
+                # Request GitHub to get them
+                try:
+                    data = self._fetch_original_pr_data(sha)
+                except requests.exceptions.RequestException:
+                    self._print("⚠️  Unable to detect original PR (connection error)")
+                    return self._handle_fallback_pr(fallback_pr, commit)
+                self._store_original_pr_data(sha, data)
+        data = self._prs_data[sha]
         if data:
             return g.PullRequest(**data)
-        # Request GitHub to get them
-        if not any("github.com" in remote.url for remote in self.app.repo.remotes):
-            return self._handle_fallback_pr(fallback_pr, commit)
+        return self._handle_fallback_pr(fallback_pr, commit)
+
+    def _prefetch_original_prs(self, commits):
+        """Request GitHub concurrently to get the original PRs of `commits`."""
+        if not self._has_github_remote:
+            return
+        shas = [
+            commit.hexsha
+            for commit in commits
+            if commit.hexsha not in self._prs_data
+            and not self.app.cache.get_pr_from_commit(commit.hexsha)
+        ]
+        if not shas:
+            return
+        with ThreadPoolExecutor(max_workers=GITHUB_MAX_WORKERS) as executor:
+            futures = {
+                sha: executor.submit(self._fetch_original_pr_data, sha) for sha in shas
+            }
+        for sha, future in futures.items():
+            try:
+                data = future.result()
+            except (requests.exceptions.RequestException, RuntimeError):
+                # Will be requested (and reported) again by `_get_original_pr`
+                continue
+            self._store_original_pr_data(sha, data)
+
+    def _fetch_original_pr_data(self, commit_sha):
+        """Request GitHub to get the original PR data of a commit.
+
+        Return `None` if the commit has no PR.
+        """
         src_repo_name = self.app.source.repo or self.app.repo_name
-        try:
-            # 1st attempt: detect original PR from source branch
-            # (e.g. if source branch == 'master')
+        # 1st attempt: detect original PR from source branch
+        # (e.g. if source branch == 'master')
+        raw_data = self.app.github.get_original_pr(
+            self.app.upstream_org,
+            src_repo_name,
+            self.app.source.branch,
+            commit_sha,
+        )
+        if not raw_data:
+            # 2nd attempt: detect original PR from source version
+            # (e.g. if working from a specific branch as source)
             raw_data = self.app.github.get_original_pr(
                 self.app.upstream_org,
                 src_repo_name,
-                self.app.source.branch,
-                commit.hexsha,
+                self.app.source_version,
+                commit_sha,
             )
-            if not raw_data:
-                # 2nd attempt: detect original PR from source version
-                # (e.g. if working from a specific branch as source)
-                raw_data = self.app.github.get_original_pr(
-                    self.app.upstream_org,
-                    src_repo_name,
-                    self.app.source_version,
-                    commit.hexsha,
-                )
-        except requests.exceptions.ConnectionError:
-            self._print("⚠️  Unable to detect original PR (connection error)")
-            return self._handle_fallback_pr(fallback_pr, commit)
-        if raw_data:
-            # Get all commits of the PR as they could update others addons
-            # than the one the user is interested in.
-            # NOTE: commits fetched from PR are already in the right order
-            pr_number = raw_data["number"]
-            pr_commits_data = self.app.github.request(
-                f"repos/{self.app.upstream_org}/{src_repo_name}"
-                f"/pulls/{pr_number}/commits?per_page=100"
-            )
-            pr_commits = [pr["sha"] for pr in pr_commits_data]
-            data = {
-                "number": raw_data["number"],
-                "url": raw_data["html_url"],
-                "author": raw_data["user"].get("login", ""),
-                "title": raw_data["title"],
-                "body": raw_data["body"],
-                "merged_at": raw_data["merged_at"],
-                "commits": pr_commits,
-            }
-            self.app.cache.store_commit_pr(commit.hexsha, data)
-            return g.PullRequest(**data)
-        return self._handle_fallback_pr(fallback_pr, commit)
+        if not raw_data:
+            return None
+        # All commits of the PR are kept as they could update others addons
+        # than the one the user is interested in.
+        # NOTE: commits fetched from PR are already in the right order
+        return {
+            "number": raw_data["number"],
+            "url": raw_data["html_url"],
+            "author": raw_data["user"].get("login", ""),
+            "title": raw_data["title"],
+            "body": raw_data["body"],
+            "merged_at": raw_data["merged_at"],
+            "commits": raw_data["commits"],
+        }
+
+    def _store_original_pr_data(self, commit_sha, data):
+        # Commits without PR are only remembered in memory, as a PR could be
+        # opened later to host them (only things set in stone are cached)
+        self._prs_data[commit_sha] = data
+        if data:
+            self.app.cache.store_commit_pr(commit_sha, data)
 
     def _handle_fallback_pr(self, fallback_pr, commit):
         # Fallback PR hosting orphaned commits

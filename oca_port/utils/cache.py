@@ -166,7 +166,7 @@ class UserCache:
     def _get_ported_commits(self):
         self._ported_commits_path.parent.mkdir(parents=True, exist_ok=True)
         self._ported_commits_path.touch(exist_ok=True)
-        return self._ported_commits_path.read_text().splitlines()
+        return set(self._ported_commits_path.read_text().splitlines())
 
     def _get_commits_to_port(self):
         self._commits_to_port_path.parent.mkdir(parents=True, exist_ok=True)
@@ -200,7 +200,7 @@ class UserCache:
             return
         if self.is_commit_ported(commit_sha):
             return
-        self._ported_commits.append(commit_sha)
+        self._ported_commits.add(commit_sha)
         with self._ported_commits_path.open(mode="a") as file_:
             file_.write(f"{commit_sha}\n")
 
