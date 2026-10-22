@@ -171,39 +171,59 @@ class Commit:
             if self.__class__.eq_strict and hasattr(self, attr)
         ]
 
-    def _lazy_eq_message(self, other):
-        """Compare commit messages."""
+    def _normalized_message(self):
+        """Return the commit message normalized for a lazy comparison."""
         # If the subject has been put on two lines, 'git-am' won't preserve it
         # if '--keep-cr' option is not set, this generates false-positive.
         # Replace all carriage returns and double spaces by one space character
         # when performing the comparison.
-        self_value = self.message.replace("\n", " ").replace("  ", " ")
-        other_value = other.message.replace("\n", " ").replace("  ", " ")
+        value = self.message.replace("\n", " ").replace("  ", " ")
         # 'git am' without '--keep' option removes text in '[]' brackets
         # generating false-positive.
-        return misc.clean_text(self_value) == misc.clean_text(other_value)
+        return misc.clean_text(value)
+
+    def _lazy_eq_message(self, other):
+        """Compare commit messages."""
+        return self._normalized_message() == other._normalized_message()
 
     def __eq__(self, other):
         """Consider a commit equal to another if some of its keys are the same."""
         if not isinstance(other, Commit):
             return super().__eq__(other)
         if self.__class__.eq_strict:
+            # Generator on purpose: stop at the first difference, so costly
+            # attributes like `paths` are computed only if needed.
             return all(
-                [
-                    getattr(self, attr) == getattr(other, attr)
-                    for attr in self._get_equality_attrs()
-                ]
+                getattr(self, attr) == getattr(other, attr)
+                for attr in self._get_equality_attrs()
             )
         else:
-            checks = [
+            return all(
                 (
                     self._lazy_eq_message(other)
                     if attr == "message"
                     else getattr(self, attr) == getattr(other, attr)
                 )
                 for attr in self._get_equality_attrs()
-            ]
-            return all(checks)
+            )
+
+    @property
+    def eq_key(self):
+        """Key shared by all commits that could be equal to this one.
+
+        Built from `base_equality_attrs`, which are compared in both strict
+        and lazy modes. The message is normalized as in the lazy comparison:
+        messages equal in strict mode are also equal once normalized, so the
+        key is valid in both modes and can be used to index commits.
+        """
+        return tuple(
+            (
+                self._normalized_message()
+                if attr == "message"
+                else getattr(self, attr, None)
+            )
+            for attr in self.base_equality_attrs
+        )
 
     def __repr__(self):
         attrs = ", ".join([f"{k}={v}" for k, v in self.__dict__.items()])
@@ -409,3 +429,25 @@ def get_commits_files(repo, ref):
             files = files[1:]
         commits_files[sha] = {f for f in files.split("\x00") if f}
     return commits_files
+
+
+class CommitIndex:
+    """List of commits indexed on their `eq_key`, for fast membership tests.
+
+    `commit in index` gives the same result as `commit in commits`, without
+    comparing `commit` against every commit of the list.
+    """
+
+    def __init__(self, commits=None):
+        self._by_key = {}
+        for commit in commits or []:
+            self._by_key.setdefault(commit.eq_key, []).append(commit)
+
+    def __contains__(self, commit):
+        return any(commit == other for other in self._by_key.get(commit.eq_key, []))
+
+    def matches(self, commit):
+        """Return the commits equal to `commit`, in their original order."""
+        return [
+            other for other in self._by_key.get(commit.eq_key, []) if commit == other
+        ]
