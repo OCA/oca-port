@@ -8,6 +8,7 @@ import time
 import threading
 import unittest
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +17,10 @@ from oca_port.app import App
 import git
 
 cache = threading.local()
+
+# Fixed date used when creating test commits, so commits created on different
+# branches are considered equal (Commit equality relies on 'authored_datetime').
+FIXED_COMMIT_DATE = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
 class CommonCase(unittest.TestCase):
@@ -175,8 +180,13 @@ class CommonCase(unittest.TestCase):
             module_path = self.repo_upstream_path / f"test_{self.addon}"
             self._create_module(module_path)
             repo.index.add(module_path)
-        # Commit
-        commit = repo.index.commit(f"[FIX] {self.addon}: fix dependency")
+        # Commit with a fixed date so the commits made on different branches
+        # compare as equal
+        commit = repo.index.commit(
+            f"[FIX] {self.addon}: fix dependency",
+            author_date=FIXED_COMMIT_DATE,
+            commit_date=FIXED_COMMIT_DATE,
+        )
         return commit.hexsha
 
     def _create_app(self, source, target, destination=None, **kwargs):
